@@ -47,7 +47,9 @@
           "recharts": "^2.15.2",
           "sonner": "^2.0.3",
           "tailwind-merge": "*",
-          "vaul": "^1.1.2"
+          "vaul": "^1.1.2",
+          "cors": "^2.8.5",
+          "express": "^4.19.2"
       },
       "devDependencies": {
           "@types/node": "^20.10.0",
@@ -56,6 +58,7 @@
       },
       "scripts": {
           "dev": "vite",
-          "build": "vite build"
+          "build": "vite build",
+          "server": "PORT=3002 node server/index.js"
       }
   }

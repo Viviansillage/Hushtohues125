@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { toast, Toaster } from 'sonner@2.0.3';
-import { CanvasDetail, CanvasItem } from './CanvasDetail';
+import { useState } from 'react';
+import { motion } from 'motion/react';
+import { CanvasDetail } from './CanvasDetail';
 
 export interface ChatHistory {
   id: string;
@@ -17,7 +16,7 @@ export interface ChatHistory {
 interface HistoryPageProps {
   onNavigateToCommunity?: (name: string) => void;
   history: ChatHistory[];
-  onUpdateHistory: (newHistory: ChatHistory[]) => void;
+  onUpdateHistory: (id: string, updates: Partial<ChatHistory>) => void;
 }
 
 const SketchToggle = ({ isPublic, onToggle, label, size = 'md' }: { isPublic: boolean; onToggle: () => void; label?: boolean; size?: 'sm' | 'md' }) => {
@@ -93,15 +92,13 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory }:
   };
 
   const handleTitleChange = (id: string, newTitle: string) => {
-    onUpdateHistory(history.map(item => 
-      item.id === id ? { ...item, title: newTitle } : item
-    ));
+    onUpdateHistory(id, { title: newTitle });
   };
 
   const togglePublic = (id: string) => {
-    onUpdateHistory(history.map(item => 
-      item.id === id ? { ...item, isPublic: !item.isPublic } : item
-    ));
+    const target = history.find(item => item.id === id);
+    if (!target) return;
+    onUpdateHistory(id, { isPublic: !target.isPublic });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, id: string) => {

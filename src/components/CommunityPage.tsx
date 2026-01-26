@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CanvasDetail, CanvasItem } from './CanvasDetail';
+import { CanvasDetail } from './CanvasDetail';
 
 // --- Types ---
 
@@ -18,7 +18,7 @@ export interface Post {
   tags: string[];
 }
 
-interface CommunityTag {
+export interface CommunityTag {
   name: string;
   stats: {
     totalPosts: number;
@@ -32,81 +32,34 @@ interface CommunityTag {
 interface CommunityPageProps {
   onNavigateToCommunity?: (name: string) => void;
   posts: Post[];
+  likedPosts: string[];
+  bookmarkedPosts: string[];
+  followedCommunities: CommunityTag[];
+  recommendedCommunities: CommunityTag[];
+  onToggleLike: (id: string) => void;
+  onToggleBookmark: (id: string) => void;
+  onFollowCommunity: (community: CommunityTag) => void;
+  onUnfollowCommunity: (name: string) => void;
 }
-
-// --- Mock Data ---
-
-const initialFollowedCommunities: CommunityTag[] = [
-  {
-    name: 'writing',
-    stats: {
-      totalPosts: 1240,
-      members: 5800,
-      online: 142,
-      postsToday: 35
-    },
-    trending: ['Character development tips', 'Plot twist ideas', 'Daily writing prompt']
-  },
-  {
-    name: 'productivity',
-    stats: {
-      totalPosts: 850,
-      members: 3200,
-      online: 89,
-      postsToday: 24
-    },
-    trending: ['Notion templates', 'Time blocking', 'Morning routines']
-  },
-  {
-    name: 'design',
-    stats: {
-      totalPosts: 2100,
-      members: 8900,
-      online: 256,
-      postsToday: 56
-    },
-    trending: ['Minimalist UI', 'Hand-drawn aesthetics', 'Color theory']
-  }
-];
-
-const recommendedCommunities: CommunityTag[] = [
-  {
-    name: 'illustration',
-    stats: { totalPosts: 3400, members: 12000, online: 450, postsToday: 89 },
-    trending: ['Digital brushes', 'Character design', 'Color palettes']
-  },
-  {
-    name: 'storytelling',
-    stats: { totalPosts: 1800, members: 6500, online: 210, postsToday: 42 },
-    trending: ['Hero\'s journey', 'World building', 'Dialogue tips']
-  },
-  {
-    name: 'photography',
-    stats: { totalPosts: 5600, members: 15000, online: 680, postsToday: 120 },
-    trending: ['Composition', 'Lighting setup', 'Editing workflows']
-  },
-  {
-    name: 'coding',
-    stats: { totalPosts: 9200, members: 25000, online: 1200, postsToday: 340 },
-    trending: ['React hooks', 'Python scripts', 'Web accessibility']
-  },
-  {
-    name: 'mindfulness',
-    stats: { totalPosts: 1500, members: 4200, online: 95, postsToday: 18 },
-    trending: ['Meditation apps', 'Breathing exercises', 'Focus music']
-  }
-];
 
 // --- Components ---
 
-export function CommunityPage({ onNavigateToCommunity, posts }: CommunityPageProps) {
+export function CommunityPage({
+  onNavigateToCommunity,
+  posts,
+  likedPosts,
+  bookmarkedPosts,
+  followedCommunities,
+  recommendedCommunities,
+  onToggleLike,
+  onToggleBookmark,
+  onFollowCommunity,
+  onUnfollowCommunity
+}: CommunityPageProps) {
   const [activeTab, setActiveTab] = useState<'following' | 'discover'>('following');
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
-  const [bookmarkedPosts, setBookmarkedPosts] = useState<Set<string>>(new Set());
-  
-  // Community State
-  const [followedCommunities, setFollowedCommunities] = useState<CommunityTag[]>(initialFollowedCommunities);
+  const likedSet = useMemo(() => new Set(likedPosts), [likedPosts]);
+  const bookmarkedSet = useMemo(() => new Set(bookmarkedPosts), [bookmarkedPosts]);
   
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,39 +79,12 @@ export function CommunityPage({ onNavigateToCommunity, posts }: CommunityPagePro
     };
   }, []);
 
-  const toggleLike = (postId: string) => {
-    setLikedPosts((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(postId)) {
-        newSet.delete(postId);
-      } else {
-        newSet.add(postId);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleBookmark = (postId: string) => {
-    setBookmarkedPosts((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(postId)) {
-        newSet.delete(postId);
-      } else {
-        newSet.add(postId);
-      }
-      return newSet;
-    });
-  };
-
   const handleFollow = (community: CommunityTag) => {
-    if (!followedCommunities.some(c => c.name === community.name)) {
-      setFollowedCommunities(prev => [community, ...prev]);
-    }
-    // Don't close search here, allow user to click into it
+    onFollowCommunity(community);
   };
 
   const handleUnfollow = (name: string) => {
-    setFollowedCommunities(prev => prev.filter(c => c.name !== name));
+    onUnfollowCommunity(name);
   };
 
   const formatTimestamp = (date: Date) => {
@@ -173,9 +99,9 @@ export function CommunityPage({ onNavigateToCommunity, posts }: CommunityPagePro
   };
 
   // Filter recommendations based on search
-  const filteredRecommendations = recommendedCommunities.filter(c => 
-    !followedCommunities.some(fc => fc.name === c.name) && // Not already followed
-    (searchQuery === '' || c.name.toLowerCase().includes(searchQuery.toLowerCase())) // Matches search
+  const filteredRecommendations = recommendedCommunities.filter(c =>
+    !followedCommunities.some(fc => fc.name === c.name) &&
+    (searchQuery === '' || c.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   // If a post is selected, show the detail view
@@ -478,13 +404,13 @@ export function CommunityPage({ onNavigateToCommunity, posts }: CommunityPagePro
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  toggleBookmark(post.id);
+                                  onToggleBookmark(post.id);
                                 }}
                                 className={`transition-all p-2 rounded-full hover:bg-[#1a1a1a]/5 ${
-                                  bookmarkedPosts.has(post.id) ? 'text-[#1a1a1a]' : 'text-[#1a1a1a]/40'
+                                  bookmarkedSet.has(post.id) ? 'text-[#1a1a1a]' : 'text-[#1a1a1a]/40'
                                 }`}
                               >
-                                 <svg width="20" height="20" viewBox="0 0 24 24" fill={bookmarkedPosts.has(post.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                 <svg width="20" height="20" viewBox="0 0 24 24" fill={bookmarkedSet.has(post.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
                                  </svg>
                               </button>
@@ -516,14 +442,14 @@ export function CommunityPage({ onNavigateToCommunity, posts }: CommunityPagePro
                            <button
                              onClick={(e) => {
                                e.stopPropagation();
-                               toggleLike(post.id);
+                               onToggleLike(post.id);
                              }}
-                             className={`flex items-center gap-2 group/like ${likedPosts.has(post.id) ? 'text-red-500' : 'text-[#1a1a1a]/60 hover:text-[#1a1a1a]'}`}
+                             className={`flex items-center gap-2 group/like ${likedSet.has(post.id) ? 'text-red-500' : 'text-[#1a1a1a]/60 hover:text-[#1a1a1a]'}`}
                            >
-                              <svg width="20" height="20" viewBox="0 0 24 24" fill={likedPosts.has(post.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-active/like:scale-125 transition-transform">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill={likedSet.has(post.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-active/like:scale-125 transition-transform">
                                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                               </svg>
-                              <span className="font-bold handwritten text-sm">{post.likes + (likedPosts.has(post.id) ? 1 : 0)} Likes</span>
+                              <span className="font-bold handwritten text-sm">{post.likes} Likes</span>
                            </button>
 
                            <button className="flex items-center gap-2 text-[#1a1a1a]/60 hover:text-[#1a1a1a]">

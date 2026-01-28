@@ -1,8 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
 
-// 加载 .env.local 文件
-dotenv.config({ path: '.env.local' });
+// Vercel 会自动注入环境变量，本地开发时从 .env.local 读取
+// 支持本地开发环境
+if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  try {
+    const dotenv = await import('dotenv');
+    dotenv.config({ path: '.env.local' });
+  } catch (e) {
+    // dotenv 可能不存在，忽略
+  }
+}
 
 // Supabase 客户端配置
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;

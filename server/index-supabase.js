@@ -1,9 +1,15 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 
-// 加载 .env.local 文件
-dotenv.config({ path: '.env.local' });
+// 支持本地开发环境
+if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  try {
+    const dotenv = await import('dotenv');
+    dotenv.default.config({ path: '.env.local' });
+  } catch (e) {
+    // dotenv 可能不存在，忽略
+  }
+}
 
 import {
   getProfile,
@@ -25,8 +31,6 @@ import {
   getOrCreateDefaultProfile
 } from './supabase.js';
 
-dotenv.config();
-
 const app = express();
 const port = process.env.PORT || 3001;
 
@@ -39,7 +43,17 @@ const sendNotFound = (res, message) => {
 
 // ========== 健康检查 ==========
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  const hasSupabaseUrl = !!(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+  const hasSupabaseKey = !!(process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY);
+  
+  res.json({ 
+    status: 'ok',
+    env: {
+      hasSupabaseUrl,
+      hasSupabaseKey,
+      nodeEnv: process.env.NODE_ENV || 'development'
+    }
+  });
 });
 
 // ========== 用户配置 ==========
@@ -371,6 +385,20 @@ app.post('/api/chat/artifact', async (req, res) => {
   }
 });
 
+// ========== 调试：捕获所有未匹配的路由 ==========
+app.use((req, res) => {
+  console.log('404 - Unmatched route:', req.method, req.url, req.path);
+  res.status(404).json({ 
+    error: 'Not Found',
+    debug: {
+      method: req.method,
+      url: req.url,
+      path: req.path,
+      originalUrl: req.originalUrl
+    }
+  });
+});
+
 // ========== 初始化默认数据 ==========
 async function initializeDefaultData() {
   try {
@@ -381,8 +409,14 @@ async function initializeDefaultData() {
   }
 }
 
-// ========== 启动服务器 ==========
-app.listen(port, async () => {
-  console.log(`API server listening on port ${port}`);
-  await initializeDefaultData();
-});
+// ========== 导出 app 供 Vercel 使用 ==========
+export default app;
+
+// ========== 本地开发时启动服务器 ==========
+// 仅在直接运行此文件时启动服务器（不是被导入时）
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('index-supabase.js')) {
+  app.listen(port, async () => {
+    console.log(`API server listening on port ${port}`);
+    await initializeDefaultData();
+  });
+}

@@ -1,5 +1,14 @@
 // Vercel Serverless Function - 完全独立，不依赖外部 server 目录
-import { getProfile, getHistory, getCommunityPosts, getCommunityMeta, getOrCreateDefaultProfile } from './supabase.js';
+import { 
+  getProfile, 
+  getHistory, 
+  getCommunityPosts, 
+  getCommunityTags,
+  getFollowedCommunities,
+  getUserLikes,
+  getUserBookmarks,
+  getOrCreateDefaultProfile 
+} from './supabase.js';
 
 // 解析 JSON body
 async function parseBody(req) {
@@ -67,8 +76,24 @@ export default async function handler(req, res) {
 
     // 社区元数据
     if ((url === '/api/community' || url === '/community') && method === 'GET') {
-      const meta = await getCommunityMeta();
-      return res.status(200).json(meta);
+      const [allTags, followed, likes, bookmarks] = await Promise.all([
+        getCommunityTags(),
+        getFollowedCommunities(),
+        getUserLikes(),
+        getUserBookmarks()
+      ]);
+      
+      const followedNames = followed.map(t => t.name);
+      const recommended = allTags.filter(t => !followedNames.includes(t.name));
+      
+      return res.status(200).json({
+        followed,
+        recommended,
+        user: {
+          likes,
+          bookmarks
+        }
+      });
     }
 
     // 聊天消息（临时存储）

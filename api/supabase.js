@@ -158,6 +158,95 @@ export async function getCommunityMeta() {
   };
 }
 
+export async function getCommunityTags() {
+  const [tagsResult, postsResult] = await Promise.all([
+    supabase.from('community_tags').select('*').order('member_count', { ascending: false }),
+    supabase.from('community_posts').select('id, tags')
+  ]);
+
+  if (tagsResult.error) throw tagsResult.error;
+  
+  const allPosts = postsResult.data || [];
+  
+  return tagsResult.data.map(tag => {
+    const tagPosts = allPosts.filter(post => post.tags && post.tags.includes(tag.name));
+    const totalPosts = tagPosts.length;
+    
+    return {
+      name: tag.name,
+      icon: tag.icon,
+      color: tag.color,
+      memberCount: tag.member_count,
+      stats: {
+        totalPosts: totalPosts,
+        members: tag.member_count || 0,
+        online: Math.floor((tag.member_count || 0) * 0.1),
+        postsToday: Math.floor(totalPosts * 0.1)
+      },
+      trending: []
+    };
+  });
+}
+
+export async function getFollowedCommunities() {
+  const profileId = await getOrCreateDefaultProfile();
+  
+  const [followedResult, postsResult] = await Promise.all([
+    supabase.from('user_followed_communities').select('community_tags(*)').eq('profile_id', profileId),
+    supabase.from('community_posts').select('id, tags')
+  ]);
+
+  if (followedResult.error) throw followedResult.error;
+  
+  const allPosts = postsResult.data || [];
+  
+  return followedResult.data.map(item => {
+    const tag = item.community_tags;
+    const tagPosts = allPosts.filter(post => post.tags && post.tags.includes(tag.name));
+    const totalPosts = tagPosts.length;
+    
+    return {
+      name: tag.name,
+      icon: tag.icon,
+      color: tag.color,
+      memberCount: tag.member_count,
+      stats: {
+        totalPosts: totalPosts,
+        members: tag.member_count || 0,
+        online: Math.floor((tag.member_count || 0) * 0.1),
+        postsToday: Math.floor(totalPosts * 0.1)
+      },
+      trending: []
+    };
+  });
+}
+
+export async function getUserLikes() {
+  const profileId = await getOrCreateDefaultProfile();
+  
+  const { data, error } = await supabase
+    .from('user_likes')
+    .select('target_type, target_id')
+    .eq('profile_id', profileId);
+
+  if (error) throw error;
+  
+  return data.map(like => `${like.target_type}:${like.target_id}`);
+}
+
+export async function getUserBookmarks() {
+  const profileId = await getOrCreateDefaultProfile();
+  
+  const { data, error } = await supabase
+    .from('user_bookmarks')
+    .select('post_id')
+    .eq('profile_id', profileId);
+
+  if (error) throw error;
+  
+  return data.map(bookmark => bookmark.post_id);
+}
+
 export async function updateProfile(updates) {
   const profileId = await getOrCreateDefaultProfile();
   

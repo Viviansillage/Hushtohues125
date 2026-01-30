@@ -75,6 +75,51 @@ Example:
 Important: Synthesize ALL conversation messages to create a cohesive visual concept, not just the last message.`;
 
 /**
+ * 调用 Google Imagen 3 API 生成图片
+ */
+async function callImagen(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
+  
+  const body = {
+    instances: [{ prompt: prompt }],
+    parameters: { 
+      sampleCount: 1, 
+      aspectRatio: "16:9" 
+    }
+  };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Imagen API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.predictions || !data.predictions[0] || !data.predictions[0].bytesBase64Encoded) {
+    throw new Error('No image data returned from Imagen API');
+  }
+
+  // Convert base64 to Data URL
+  const base64Image = data.predictions[0].bytesBase64Encoded;
+  const dataUrl = `data:image/png;base64,${base64Image}`;
+  
+  return dataUrl;
+}
+
+/**
  * 调用 Gemini API
  */
 async function callGemini(messages, userText, customPrompt = null) {
@@ -442,7 +487,7 @@ export default async function handler(req, res) {
           try {
             const { GoogleGenerativeAI } = await import('@google/generative-ai');
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
             
             console.log('[Image] Analyzing conversation:', messages.length, 'messages');
             
@@ -469,9 +514,19 @@ export default async function handler(req, res) {
             };
           }
 
-          // Step 2: 调用 Pollinations AI 生成图片（免费 API）
-          const imagePrompt = encodeURIComponent(imageData.imagePrompt);
-          const imageUrl = `https://image.pollinations.ai/prompt/${imagePrompt}?width=1024&height=1024&seed=${Date.now()}&nologo=true`;
+          // Step 2: 调用 Google Imagen 3 API 生成真实图片
+          let imageUrl;
+          try {
+            console.log('[Image] Calling Imagen 3 with prompt:', imageData.imagePrompt.substring(0, 100));
+            imageUrl = await callImagen(imageData.imagePrompt);
+            console.log('[Image] Imagen 3 generated image successfully');
+          } catch (imagenError) {
+            console.error('[Image] Imagen 3 API error:', imagenError);
+            // 降级到 Pollinations 作为备份
+            const imagePrompt = encodeURIComponent(imageData.imagePrompt);
+            imageUrl = `https://image.pollinations.ai/prompt/${imagePrompt}?width=1024&height=1024&seed=${Date.now()}&nologo=true`;
+            console.log('[Image] Using Pollinations as fallback');
+          }
           
           // Step 3: 提取聊天摘要作为 last_message
           const chatSummary = messages.slice(-3).map(m => m.text).join(' ').substring(0, 200);

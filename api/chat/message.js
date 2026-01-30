@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       
       const messages = [
         { id: `${Date.now()}-u`, text, sender: 'user', timestamp: now },
-        { id: `${Date.now()}-b`, text: 'Got it. I can turn that into a sketch, a prompt, or a clean summary. Want a mindmap or an image?', sender: 'bot', timestamp: now }
+        { id: `${Date.now()}-b`, text: 'Got it! [v2026-01-29-20:00] I can turn that into a sketch, a prompt, or a clean summary. Want a mindmap or an image?', sender: 'bot', timestamp: now }
       ];
       
       return res.status(200).json({ messages });

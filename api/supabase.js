@@ -101,7 +101,9 @@ export async function getCommunityPosts() {
   return data.map(post => ({
     id: post.id,
     title: post.title,
-    author: post.author,
+    author: {
+      name: post.author_name
+    },
     imageUrl: post.image_url,
     content: post.content,
     likes: post.likes,
@@ -114,20 +116,44 @@ export async function getCommunityPosts() {
 export async function getCommunityMeta() {
   const profileId = await getOrCreateDefaultProfile();
   
-  const [tags, profile] = await Promise.all([
+  const [tags, followedRels, likes, bookmarks, posts] = await Promise.all([
     supabase.from('community_tags').select('*'),
-    supabase.from('profiles').select('followed_communities, liked_posts, bookmarked_posts').eq('id', profileId).single()
+    supabase.from('user_followed_communities').select('community_tag_id, community_tags(name)').eq('profile_id', profileId),
+    supabase.from('user_likes').select('target_id').eq('profile_id', profileId).eq('target_type', 'post'),
+    supabase.from('user_bookmarks').select('post_id').eq('profile_id', profileId),
+    supabase.from('community_posts').select('id, tags')
   ]);
 
   const allTags = tags.data || [];
-  const userFollowed = profile.data?.followed_communities || [];
+  const userFollowedNames = (followedRels.data || [])
+    .filter(rel => rel.community_tags)
+    .map(rel => rel.community_tags.name);
+  const allPosts = posts.data || [];
+  
+  // 计算每个tag的统计数据
+  const formatTag = (tag) => {
+    // 统计包含此标签的帖子数量
+    const tagPosts = allPosts.filter(post => post.tags && post.tags.includes(tag.name));
+    const totalPosts = tagPosts.length;
+    
+    return {
+      name: tag.name,
+      stats: {
+        totalPosts: totalPosts,
+        members: tag.member_count || 0,
+        online: Math.floor((tag.member_count || 0) * 0.1), // 假设10%在线
+        postsToday: Math.floor(totalPosts * 0.1) // 假设10%是今天的
+      },
+      trending: [] // 可以后续添加热门话题
+    };
+  };
   
   return {
-    followed: allTags.filter(t => userFollowed.includes(t.name)),
-    recommended: allTags.filter(t => !userFollowed.includes(t.name)),
+    followed: allTags.filter(t => userFollowedNames.includes(t.name)).map(formatTag),
+    recommended: allTags.filter(t => !userFollowedNames.includes(t.name)).map(formatTag),
     user: {
-      likes: profile.data?.liked_posts || [],
-      bookmarks: profile.data?.bookmarked_posts || []
+      likes: (likes.data || []).map(l => l.target_id),
+      bookmarks: (bookmarks.data || []).map(b => b.post_id)
     }
   };
 }

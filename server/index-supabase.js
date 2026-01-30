@@ -306,7 +306,7 @@ app.post('/api/chat/message', async (req, res) => {
     // TODO: 集成 Gemini API 生成真实回复
     const botMessage = {
       id: `${Date.now()}-b`,
-      text: 'Got it! [v2026-01-29-20:00] I can turn that into a sketch, a prompt, or a clean summary. Want a mindmap or an image?',
+      text: 'Got it. I can turn that into a sketch, a prompt, or a clean summary. Want a mindmap or an image?',
       sender: 'bot',
       timestamp: new Date().toISOString()
     };

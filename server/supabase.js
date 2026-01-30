@@ -299,34 +299,19 @@ export async function updatePostLikes(postId, likes) {
  * 获取社区标签
  */
 export async function getCommunityTags() {
-  const [tagsResult, postsResult] = await Promise.all([
-    supabase.from('community_tags').select('*').order('member_count', { ascending: false }),
-    supabase.from('community_posts').select('id, tags')
-  ]);
+  const { data, error } = await supabase
+    .from('community_tags')
+    .select('*')
+    .order('member_count', { ascending: false });
 
-  if (tagsResult.error) throw tagsResult.error;
+  if (error) throw error;
   
-  const allPosts = postsResult.data || [];
-  
-  return tagsResult.data.map(tag => {
-    // 统计包含此标签的帖子数量
-    const tagPosts = allPosts.filter(post => post.tags && post.tags.includes(tag.name));
-    const totalPosts = tagPosts.length;
-    
-    return {
-      name: tag.name,
-      icon: tag.icon,
-      color: tag.color,
-      memberCount: tag.member_count,
-      stats: {
-        totalPosts: totalPosts,
-        members: tag.member_count || 0,
-        online: Math.floor((tag.member_count || 0) * 0.1),
-        postsToday: Math.floor(totalPosts * 0.1)
-      },
-      trending: []
-    };
-  });
+  return data.map(tag => ({
+    name: tag.name,
+    icon: tag.icon,
+    color: tag.color,
+    memberCount: tag.member_count
+  }));
 }
 
 /**
@@ -335,35 +320,19 @@ export async function getCommunityTags() {
 export async function getFollowedCommunities() {
   const profileId = await getOrCreateDefaultProfile();
   
-  const [followedResult, postsResult] = await Promise.all([
-    supabase.from('user_followed_communities').select('community_tags(*)').eq('profile_id', profileId),
-    supabase.from('community_posts').select('id, tags')
-  ]);
+  const { data, error } = await supabase
+    .from('user_followed_communities')
+    .select('community_tags(*)')
+    .eq('profile_id', profileId);
 
-  if (followedResult.error) throw followedResult.error;
+  if (error) throw error;
   
-  const allPosts = postsResult.data || [];
-  
-  return followedResult.data.map(item => {
-    const tag = item.community_tags;
-    // 统计包含此标签的帖子数量
-    const tagPosts = allPosts.filter(post => post.tags && post.tags.includes(tag.name));
-    const totalPosts = tagPosts.length;
-    
-    return {
-      name: tag.name,
-      icon: tag.icon,
-      color: tag.color,
-      memberCount: tag.member_count,
-      stats: {
-        totalPosts: totalPosts,
-        members: tag.member_count || 0,
-        online: Math.floor((tag.member_count || 0) * 0.1),
-        postsToday: Math.floor(totalPosts * 0.1)
-      },
-      trending: []
-    };
-  });
+  return data.map(item => ({
+    name: item.community_tags.name,
+    icon: item.community_tags.icon,
+    color: item.community_tags.color,
+    memberCount: item.community_tags.member_count
+  }));
 }
 
 /**

@@ -1,4 +1,4 @@
-import { getCommunityTags, getFollowedCommunities, getUserLikes, getUserBookmarks } from './supabase.js';
+import { getCommunityMeta } from './supabase.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,24 +11,8 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const [allTags, followed, likes, bookmarks] = await Promise.all([
-        getCommunityTags(),
-        getFollowedCommunities(),
-        getUserLikes(),
-        getUserBookmarks()
-      ]);
-      
-      const followedNames = followed.map(t => t.name);
-      const recommended = allTags.filter(t => !followedNames.includes(t.name));
-      
-      return res.status(200).json({
-        followed,
-        recommended,
-        user: {
-          likes,
-          bookmarks
-        }
-      });
+      const meta = await getCommunityMeta();
+      return res.status(200).json(meta);
     }
 
     res.status(405).json({ error: 'Method not allowed' });

@@ -2722,3 +2722,21 @@ body:after {
     transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));
   }
 }
+
+/* Mermaid 思维导图样式 */
+.mermaid-container {
+  min-height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 美化 Mermaid 节点 */
+.mermaid-container .mindmap-node {
+  font-family: 'Quicksand', sans-serif;
+}

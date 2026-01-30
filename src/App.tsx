@@ -12,7 +12,7 @@ import {
   ApiProfile,
   followCommunity,
   getCommunityMeta,
-  getCommunityPosts,
+  getDiscoverFeed,
   getHistory,
   getProfile,
   toggleCommunityBookmark,
@@ -55,7 +55,7 @@ export default function App() {
         const [profileData, historyData, postData, communityMeta] = await Promise.all([
           getProfile(),
           getHistory(),
-          getCommunityPosts(),
+          getDiscoverFeed(),
           getCommunityMeta()
         ]);
 
@@ -86,10 +86,15 @@ export default function App() {
 
   const refreshHistory = async () => {
     try {
+      console.log('[App] Fetching history, guestId:', localStorage.getItem('hushtohues_guest_id'));
       const historyData = await getHistory();
+      console.log('[App] History fetched:', historyData.length, 'items');
       setHistory(historyData.map(mapHistory));
     } catch (error) {
-      console.error('Failed to refresh history', error);
+      console.error('[App] Failed to refresh history', error);
+      if (error instanceof Error) {
+        console.error('[App] Error message:', error.message);
+      }
     }
   };
 
@@ -106,6 +111,10 @@ export default function App() {
     } catch (error) {
       console.error('Failed to update history', error);
     }
+  };
+
+  const handleDeleteHistory = (id: string) => {
+    setHistory((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleToggleLike = async (postId: string) => {
@@ -419,6 +428,7 @@ export default function App() {
               onNavigateToCommunity={handleNavigateToCommunity}
               history={history}
               onUpdateHistory={handleUpdateHistory}
+              onDeleteHistory={handleDeleteHistory}
             />
           )}
           {currentPage === 'community' && (

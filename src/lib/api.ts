@@ -1,8 +1,23 @@
+import { getOrCreateGuestId } from './guest';
+
 export type ApiChatMessage = {
   id: string;
   text: string;
   sender: 'user' | 'bot';
   timestamp: string;
+};
+
+export type ApiStructuredData = {
+  title: string;
+  summary: string;
+  tags: string[];
+  mindmap: {
+    root: string;
+    branches: Array<{
+      label: string;
+      children: string[];
+    }>;
+  };
 };
 
 export type ApiProfile = {
@@ -14,6 +29,7 @@ export type ApiProfile = {
     saveHistory: boolean;
     publicProfile: boolean;
   };
+  isGuest?: boolean;
 };
 
 export type ApiHistoryItem = {
@@ -60,9 +76,16 @@ export type ApiUserState = {
 };
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
+  // 获取 guest ID 并添加到所有请求
+  const guestId = getOrCreateGuestId();
+  
   const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
+    ...options,
+    headers: { 
+      'Content-Type': 'application/json',
+      'X-Guest-ID': guestId,  // 所有请求自动携带 guest ID
+      ...(options?.headers || {})  // 合并用户自定义 headers
+    }
   });
   if (!response.ok) {
     const errorText = await response.text();
@@ -81,21 +104,31 @@ export const updateProfile = (payload: Partial<ApiProfile>) =>
 
 export const getHistory = () => request<ApiHistoryItem[]>('/api/history');
 
+export const deleteHistoryItem = (id: string) =>
+  request<{ success: boolean; id: string }>(`/api/history/${id}`, {
+    method: 'DELETE'
+  });
+
 export const updateHistoryItem = (id: string, payload: Partial<ApiHistoryItem>) =>
   request<ApiHistoryItem>(`/api/history/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
 
-export const getCommunityPosts = () => request<ApiCommunityPost[]>('/api/community/posts');
+export const getCommunityPosts = () => request<ApiCommunityPost[]>('/api/community?posts=true');
 
-export const toggleCommunityLike = (id: string) =>
-  request<{ liked: boolean; likes: number }>(`/api/community/posts/${id}/like`, {
-    method: 'POST'
-  });
+// 旧接口：指向旧的路由（如果存在），否则改用新的 /api/community/like
+export const toggleCommunityLike = async (id: string) => {
+  // 直接调用新的点赞接口
+  const result = await likePost(id);
+  return { 
+    liked: !result.alreadyLiked, 
+    likes: result.likes !== null ? result.likes : undefined  // 保持原始值，不转换为 0
+  };
+};
 
 export const toggleCommunityBookmark = (id: string) =>
-  request<{ bookmarked: boolean }>(`/api/community/posts/${id}/bookmark`, {
+  request<{ bookmarked: boolean }>(`/api/community?action=bookmark&postId=${id}`, {
     method: 'POST'
   });
 
@@ -111,14 +144,20 @@ export const followCommunity = (name: string) =>
     followed: ApiCommunityTag[];
     recommended: ApiCommunityTag[];
     user: ApiUserState;
-  }>(`/api/community/follow/${name}`, { method: 'POST' });
+  }>('/api/community?action=follow', { 
+    method: 'POST',
+    body: JSON.stringify({ name })
+  });
 
 export const unfollowCommunity = (name: string) =>
   request<{
     followed: ApiCommunityTag[];
     recommended: ApiCommunityTag[];
     user: ApiUserState;
-  }>(`/api/community/unfollow/${name}`, { method: 'POST' });
+  }>('/api/community?action=unfollow', { 
+    method: 'POST',
+    body: JSON.stringify({ name })
+  });
 
 export const getCommunityDetail = (name: string) =>
   request<{
@@ -140,23 +179,112 @@ export const getCommunityDetail = (name: string) =>
   }>(`/api/community/${name}`);
 
 export const toggleCommunityJoin = (name: string) =>
-  request<{ joined: boolean }>(`/api/community/${name}/join`, { method: 'POST' });
+  request<{ joined: boolean }>(`/api/community?action=join&community=${name}`, { method: 'POST' });
 
-export const toggleCommunityDetailLike = (name: string, id: string) =>
-  request<{ liked: boolean; likes: number }>(`/api/community/${name}/posts/${id}/like`, {
-    method: 'POST'
-  });
+// 旧接口：社区详情页的点赞，指向新接口
+export const toggleCommunityDetailLike = async (name: string, id: string) => {
+  const result = await likePost(id);
+  return { 
+    liked: !result.alreadyLiked, 
+    likes: result.likes !== null ? result.likes : undefined
+  };
+};
 
-export const getChatMessages = () => request<ApiChatMessage[]>('/api/chat/messages');
+// 已废弃：前端自行维护 messages，不再从后端读取
+export const getChatMessages = (conversationId?: string) => 
+  Promise.resolve([]);  // 返回空数组
 
-export const sendChatMessage = (text: string) =>
-  request<{ messages: ApiChatMessage[] }>('/api/chat/message', {
+export const sendChatMessage = (text: string, messages?: ApiChatMessage[]) =>
+  request<{ messages: ApiChatMessage[]; structured: ApiStructuredData }>('/api/chat?action=message', {
     method: 'POST',
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ text, messages })  // 传递当前 messages 作为上下文
   });
 
-export const createChatArtifact = (kind: string) =>
-  request<{ history: ApiHistoryItem; message: ApiChatMessage }>('/api/chat/artifact', {
+export const createChatArtifact = (kind: string, messages: ApiChatMessage[]) =>
+  request<{ 
+    history: ApiHistoryItem; 
+    message: ApiChatMessage; 
+    structuredMindmap?: any;
+    generatedImage?: {
+      url: string;
+      title: string;
+      summary: string;
+      prompt: string;
+    };
+  }>('/api/chat?action=artifact', {
     method: 'POST',
-    body: JSON.stringify({ kind })
+    body: JSON.stringify({ kind, messages })  // 只传 kind 和 messages
   });
+
+// ============ Guest-first Demo 新增 API ============
+
+/**
+ * 保存到 Archive（Guest 也可以保存）
+ */
+export const saveToArchive = (payload: {
+  title: string;
+  content: string;
+  messages?: any[];
+  tags?: string[];
+  previewImages?: string[];
+}) =>
+  request<{ id: string; title: string; timestamp: string; isDemo: boolean }>(
+    '/api/history',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
+
+/**
+ * 发布到 Community（Guest 也可以发布）
+ */
+export const publishToCommunity = (payload: {
+  title: string;
+  content: string;
+  contentJson?: any;
+  summary?: string;
+  tags?: string[];
+  communityName?: string;
+  communityTagId?: string;
+  imageUrl?: string;
+  assetUrls?: string[];
+}) =>
+  request<{ id: string; title: string; timestamp: string; isDemo: boolean }>(
+    '/api/community/publish',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
+
+/**
+ * 点赞帖子（Guest 也可以点赞，幂等）
+ */
+export const likePost = (postId: string) =>
+  request<{ message: string; alreadyLiked: boolean; likes: number | null }>(
+    '/api/community/like',
+    {
+      method: 'POST',
+      body: JSON.stringify({ postId, targetType: 'post' })
+    }
+  );
+
+/**
+ * 取消点赞
+ */
+export const unlikePost = (postId: string) =>
+  request<{ message: string; likes: number | null }>(
+    '/api/community/like',
+    {
+      method: 'DELETE',
+      body: JSON.stringify({ postId, targetType: 'post' })
+    }
+  );
+
+/**
+ * 获取 Discover Feed（seed 优先）
+ */
+export const getDiscoverFeed = () =>
+  request<ApiCommunityPost[]>('/api/community?discover=true');
+

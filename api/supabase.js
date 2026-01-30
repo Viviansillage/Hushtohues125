@@ -15,6 +15,35 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 
 let defaultProfileId = null;
 
+/**
+ * 从请求中解析 actor（用户或访客）
+ * @param {Request} req - HTTP 请求对象
+ * @returns {{ type: 'user' | 'guest', id: string }} actor 对象
+ */
+export function getActor(req) {
+  // 优先检查是否有已登录用户（未来扩展 Supabase Auth）
+  // const userId = req.headers['x-user-id'];
+  // if (userId) {
+  //   return { type: 'user', id: userId };
+  // }
+  
+  // 从 header 读取 guest_id（统一使用小写）
+  // Vercel 可能将 header 转为数组，需要处理
+  let guestId = req.headers['x-guest-id'];
+  if (Array.isArray(guestId)) {
+    guestId = guestId[0];
+  }
+  
+  if (guestId) {
+    return { type: 'guest', id: guestId };
+  }
+  
+  // 降级：生成临时 guest ID（不推荐，应由前端生成）
+  const tempGuestId = `guest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  console.warn('No guest_id in request, using temporary:', tempGuestId);
+  return { type: 'guest', id: tempGuestId };
+}
+
 export async function getOrCreateDefaultProfile() {
   if (defaultProfileId) return defaultProfileId;
 

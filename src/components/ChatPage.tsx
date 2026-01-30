@@ -3,12 +3,17 @@ import { Network, Image as ImageIcon, Save, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner@2.0.3';
 import { createChatArtifact, getChatMessages, sendChatMessage } from '../lib/api';
+import mermaid from 'mermaid';
 
 interface Message {
   id: string;
   text: string;
   sender: 'user' | 'bot';
   timestamp: Date;
+  artifact?: {
+    type: 'mindmap' | 'image' | 'save';
+    data?: any;
+  };
 }
 
 interface ChatPageProps {
@@ -23,13 +28,66 @@ declare global {
   }
 }
 
-const mapMessage = (message: { id: string; text: string; sender: 'user' | 'bot'; timestamp: string }): Message => ({
+const mapMessage = (message: { id: string; text: string; sender: 'user' | 'bot'; timestamp: string; artifact?: any }): Message => ({
   ...message,
   timestamp: new Date(message.timestamp)
 });
 
+const CHAT_MESSAGES_KEY = 'hushtohues_chat_messages';
+
+// Mermaid 思维导图渲染组件
+const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }) => {
+  const mermaidRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (mermaidRef.current && mermaidCode) {
+      // 初始化 Mermaid
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        mindmap: {
+          padding: 20,
+          useMaxWidth: true
+        }
+      });
+
+      // 渲染思维导图
+      const renderMindmap = async () => {
+        try {
+          const { svg } = await mermaid.render(`mermaid-${id}`, mermaidCode);
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = svg;
+          }
+        } catch (error) {
+          console.error('Mermaid render error:', error);
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = '<p class="text-red-500">Failed to render mindmap</p>';
+          }
+        }
+      };
+
+      renderMindmap();
+    }
+  }, [mermaidCode, id]);
+
+  return <div ref={mermaidRef} className="mermaid-container"></div>;
+};
+
 export function ChatPage({ onHistorySync }: ChatPageProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    // 初始化时从 localStorage 恢复
+    try {
+      const saved = localStorage.getItem(CHAT_MESSAGES_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map(mapMessage);
+      }
+    } catch (error) {
+      console.error('Failed to load messages from localStorage', error);
+    }
+    return [];
+  });
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [useMockVoice, setUseMockVoice] = useState(false); // Fallback state for demo environments
@@ -39,22 +97,14 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 保存 messages 到 localStorage
   useEffect(() => {
-    let isMounted = true;
-    const loadMessages = async () => {
-      try {
-        const data = await getChatMessages();
-        if (!isMounted) return;
-        setMessages(data.map(mapMessage));
-      } catch (error) {
-        console.error('Failed to load messages', error);
-      }
-    };
-    loadMessages();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    try {
+      localStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messages));
+    } catch (error) {
+      console.error('Failed to save messages to localStorage', error);
+    }
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -71,13 +121,29 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     setInputValue('');
     setIsSending(true);
 
+    // 立即显示用户消息
+    const userMessage: Message = {
+      id: `msg-${Date.now()}-u`,
+      text: messageText,
+      sender: 'user',
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     try {
-      const response = await sendChatMessage(messageText);
-      setMessages(response.messages.map(mapMessage));
-      onHistorySync?.();
+      const response = await sendChatMessage(messageText, messages);
+      // 只添加 AI 回复（最后一条消息）
+      const aiMessage = response.messages[response.messages.length - 1];
+      if (aiMessage && aiMessage.sender === 'bot') {
+        setMessages(prev => [...prev, mapMessage(aiMessage)]);
+      }
     } catch (error) {
       console.error('Failed to send message', error);
+      const errorText = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error details:', errorText);
       toast.error('Message failed to send.', { className: 'handwritten font-bold' });
+      // 发送失败，移除刚才添加的用户消息
+      setMessages(prev => prev.filter(m => m.id !== userMessage.id));
     } finally {
       setIsSending(false);
     }
@@ -85,12 +151,33 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
   const handleArtifact = async (kind: string) => {
     try {
-      const response = await createChatArtifact(kind);
-      setMessages((prev) => [...prev, mapMessage(response.message)]);
-      onHistorySync?.();
+      const response = await createChatArtifact(kind, messages);
+      
+      // 创建带有 artifact 数据的消息
+      const artifactMessage: Message = {
+        id: `msg-${Date.now()}-artifact`,
+        text: response.message.text,
+        sender: 'bot',
+        timestamp: new Date(response.message.timestamp),
+        artifact: {
+          type: kind as 'mindmap' | 'image' | 'save',
+          data: kind === 'mindmap' 
+            ? response.structuredMindmap 
+            : kind === 'image' 
+              ? response.generatedImage 
+              : undefined
+        }
+      };
+      
+      setMessages((prev) => [...prev, artifactMessage]);
+      onHistorySync?.();  // 这里才需要同步 Archive
       toast.success(`Saved ${kind} to your archive.`, { className: 'handwritten font-bold' });
+      // 可选：保存后清空聊天（取消注释以启用）
+      // setMessages([]);
     } catch (error) {
       console.error('Failed to create artifact', error);
+      const errorText = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error details:', errorText);
       toast.error('Could not save that yet.', { className: 'handwritten font-bold' });
     }
   };
@@ -182,12 +269,12 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const lastMessage = messages[messages.length - 1];
   const shouldShowActionBar = messages.length > 1 && lastMessage?.sender === 'bot' && inputValue.trim() === '';
 
-  // Options for the save menu
+  // Options for the save menu（映射到后端的 kind: mindmap/image/save）
   const saveOptions = [
     { id: 'image', label: 'Image', path: 'M 5 25 C 5 10 20 5 50 8 C 80 5 95 15 95 30 C 95 45 80 55 50 52 C 20 55 5 45 5 25' },
     { id: 'mindmap', label: 'Mindmap', path: 'M 8 28 C 10 12 30 5 55 5 C 85 8 92 18 90 32 C 88 48 75 55 45 52 C 15 55 5 42 8 28' },
-    { id: 'text', label: 'Text', path: 'M 6 30 C 8 15 25 8 50 10 C 80 8 95 20 92 35 C 90 50 70 55 45 52 C 20 52 2 40 6 30' },
-    { id: 'all', label: 'All', path: 'M 10 28 C 10 12 30 8 52 8 C 85 10 95 22 92 35 C 85 50 65 55 40 52 C 15 50 5 40 10 28' }
+    { id: 'save', label: 'Text', path: 'M 6 30 C 8 15 25 8 50 10 C 80 8 95 20 92 35 C 90 50 70 55 45 52 C 20 52 2 40 6 30' },
+    { id: 'save', label: 'All', path: 'M 10 28 C 10 12 30 8 52 8 C 85 10 95 22 92 35 C 85 50 65 55 40 52 C 15 50 5 40 10 28' }
   ];
 
   return (
@@ -226,12 +313,81 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                 }`}
               >
                 <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+                
+                {/* 渲染思维导图 */}
+                {message.artifact?.type === 'mindmap' && message.artifact.data && (
+                  <div className="mt-4 p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
+                    <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
+                      <span className="text-2xl">🧠</span>
+                      <h3 className="font-bold text-xl text-gray-800">
+                        {message.artifact.data.title || 'Mindmap'}
+                      </h3>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 overflow-x-auto">
+                      <MermaidMindmap 
+                        mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
+                        id={message.id}
+                      />
+                    </div>
+                    {message.artifact.data.summary && (
+                      <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* 渲染生成的图片 */}
+                {message.artifact?.type === 'image' && message.artifact.data && (
+                  <div className="mt-4 p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
+                    <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
+                      <span className="text-2xl">🎨</span>
+                      <h3 className="font-bold text-xl text-gray-800">
+                        {message.artifact.data.title || 'Generated Image'}
+                      </h3>
+                    </div>
+                    <div className="bg-white rounded-lg p-4">
+                      <img 
+                        src={message.artifact.data.url} 
+                        alt={message.artifact.data.title || 'AI Generated'}
+                        className="w-full rounded-lg shadow-md"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://placehold.co/600x400/EEE/31343C?text=Loading...';
+                        }}
+                      />
+                    </div>
+                    {message.artifact.data.summary && (
+                      <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
+                    )}
+                    {message.artifact.data.prompt && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">View prompt</summary>
+                        <p className="mt-1 text-xs text-gray-600 bg-gray-50 p-2 rounded">{message.artifact.data.prompt}</p>
+                      </details>
+                    )}
+                  </div>
+                )}
+                
                 <span className="text-xs text-[#6d6d6d] mt-2 block">
                   {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
             </div>
           ))}
+
+          {/* Loading indicator */}
+          {isSending && (
+            <div className="flex justify-start">
+              <div className="max-w-2xl px-5 py-3 hand-drawn-border wireframe-shadow bg-[#faf8f3]">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
+                  <span className="text-sm text-[#6d6d6d]">AI is thinking...</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Action Bar */}
           {shouldShowActionBar && (

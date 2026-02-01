@@ -100,7 +100,7 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
 
 export function ChatPage({ onHistorySync }: ChatPageProps) {
   // ✅ 使用全局 store，确保切页不丢
-  const { conversationId, messages, appendMessage, setMessages, resetChat } = useChatStore();
+  const { conversationId, messages, appendMessage, setMessages, resetChat, loadSession } = useChatStore();
   
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -112,6 +112,26 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ✅ 检查是否有从history页面加载的session
+  useEffect(() => {
+    const loadSessionId = sessionStorage.getItem('loadSessionId');
+    const loadSessionMessages = sessionStorage.getItem('loadSessionMessages');
+    
+    if (loadSessionId && loadSessionMessages) {
+      try {
+        const messages = JSON.parse(loadSessionMessages);
+        console.log('[ChatPage] 📂 Loading session from history:', loadSessionId);
+        loadSession(loadSessionId, messages);
+        
+        // 清除sessionStorage
+        sessionStorage.removeItem('loadSessionId');
+        sessionStorage.removeItem('loadSessionMessages');
+      } catch (error) {
+        console.error('[ChatPage] Failed to load session from history:', error);
+      }
+    }
+  }, []);
 
   // ✅ 刷新时从数据库恢复历史消息
   useEffect(() => {

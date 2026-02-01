@@ -108,6 +108,20 @@ export default function App() {
     }
   };
 
+  const refreshChatSessions = async () => {
+    try {
+      console.log('[App] Fetching chat sessions');
+      const sessionsData = await getChatSessions();
+      console.log('[App] Chat sessions fetched:', sessionsData.length, 'items');
+      setChatSessions(sessionsData.map(s => ({
+        ...s,
+        timestamp: new Date(s.timestamp)
+      })));
+    } catch (error) {
+      console.error('[App] Failed to refresh chat sessions', error);
+    }
+  };
+
   const handleUpdateHistory = async (id: string, updates: Partial<ChatHistory>) => {
     setHistory((prev) =>
       prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
@@ -447,7 +461,10 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          {currentPage === 'chat' && <ChatPage onHistorySync={refreshHistory} />}
+          {currentPage === 'chat' && <ChatPage onHistorySync={() => {
+            refreshHistory();
+            refreshChatSessions();
+          }} />}
           {currentPage === 'archive' && (
             <HistoryPage
               onNavigateToCommunity={handleNavigateToCommunity}
@@ -459,15 +476,42 @@ export default function App() {
           {currentPage === 'chat-history' && (
             <ChatHistoryPage
               sessions={chatSessions}
-              onSelectSession={(sessionId) => {
-                // TODO: Load session and switch to chat page
-                console.log('Load session:', sessionId);
-                setCurrentPage('chat');
+              onSelectSession={async (sessionId) => {
+                try {
+                  // Load messages from the selected session
+                  const response = await fetch(`/api/chat?action=load&sessionId=${sessionId}`, {
+                    headers: {
+                      'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+                    }
+                  });
+                  
+                  if (!response.ok) throw new Error('Failed to load session');
+                  
+                  const data = await response.json();
+                  const loadedMessages = (data.messages || []).map((msg: any) => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                  }));
+                  
+                  // Store the session info for ChatPage to load
+                  sessionStorage.setItem('loadSessionId', sessionId);
+                  sessionStorage.setItem('loadSessionMessages', JSON.stringify(loadedMessages));
+                  
+                  // Switch to chat page
+                  setCurrentPage('chat');
+                } catch (error) {
+                  console.error('Failed to load session:', error);
+                  alert('Failed to load chat session');
+                }
               }}
               onDeleteSession={async (sessionId) => {
-                // TODO: Implement delete session API
-                console.log('Delete session:', sessionId);
-                setChatSessions(prev => prev.filter(s => s.sessionId !== sessionId));
+                try {
+                  // TODO: Call delete API when implemented
+                  console.log('Delete session:', sessionId);
+                  setChatSessions(prev => prev.filter(s => s.sessionId !== sessionId));
+                } catch (error) {
+                  console.error('Failed to delete session:', error);
+                }
               }}
             />
           )}

@@ -25,6 +25,7 @@ interface ChatContextType {
   appendMessage: (message: Message) => void;
   setMessages: (messages: Message[]) => void;
   resetChat: () => void;
+  loadSession: (sessionId: string, messages: Message[]) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -73,8 +74,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, newId);
   };
 
+  const loadSession = (sessionId: string, messages: Message[]) => {
+    console.log('📂 Loading session:', sessionId, 'with', messages.length, 'messages');
+    setConversationId(sessionId);
+    setMessagesState(messages);
+    localStorage.setItem(STORAGE_KEY, sessionId);
+  };
+
   return (
-    <ChatContext.Provider value={{ conversationId, messages, appendMessage, setMessages, resetChat }}>
+    <ChatContext.Provider value={{ conversationId, messages, appendMessage, setMessages, resetChat, loadSession }}>
       {children}
     </ChatContext.Provider>
   );

@@ -347,6 +347,12 @@ export async function saveMessage(sessionId, message, actor) {
     if (sessionError) throw sessionError;
     
     if (!session) {
+      // 为新session生成标题（使用第一条用户消息的前50个字符）
+      let title = 'New Chat';
+      if (message.sender === 'user' && message.text) {
+        title = message.text.substring(0, 50) + (message.text.length > 50 ? '...' : '');
+      }
+      
       // 创建新session
       const { error: createError } = await supabase
         .from('chat_sessions')
@@ -354,12 +360,21 @@ export async function saveMessage(sessionId, message, actor) {
           session_id: sessionId,
           owner_type: actor.type,
           owner_id: actor.id,
-          title: 'New Chat',
+          title: title,
           message_count: 0,
           created_at: new Date().toISOString()
         });
       
       if (createError) throw createError;
+    } else if (!session.title || session.title === 'New Chat') {
+      // 如果session已存在但标题是默认的，用第一条用户消息更新标题
+      if (message.sender === 'user' && message.text) {
+        const title = message.text.substring(0, 50) + (message.text.length > 50 ? '...' : '');
+        await supabase
+          .from('chat_sessions')
+          .update({ title })
+          .eq('session_id', sessionId);
+      }
     }
     
     // 2. 插入消息

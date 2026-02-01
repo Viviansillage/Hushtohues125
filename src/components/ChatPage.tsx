@@ -110,6 +110,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [artifactType, setArtifactType] = useState<string>('');
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
+  const [saveAllOnConfirm, setSaveAllOnConfirm] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasLoadedSession = useRef(false);
@@ -381,14 +383,138 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   // ✅ New Chat 按钮：调用 store 的 resetChat
   const handleNewChat = () => {
     console.log('handleNewChat clicked');
+    setSaveAllOnConfirm(false);
     setShowNewChatDialog(true);
   };
 
-  const confirmNewChat = () => {
+  const saveAllArtifactsInChat = async () => {
+    const textOnlyMessages = messages.map((message) => ({
+      id: message.id,
+      text: message.text,
+      sender: message.sender,
+      timestamp: message.timestamp.toISOString()
+    }));
+    const conversationSummary = textOnlyMessages
+      .slice(-5)
+      .map((message) => message.text)
+      .join(' ')
+      .trim();
+
+    const artifactsToSave = messages
+      .filter(
+        (message) =>
+          message.artifact?.data &&
+          !message.artifact?.saved &&
+          (message.artifact.type === 'image' || message.artifact.type === 'mindmap' || message.artifact.type === 'save')
+      )
+      .map((message) => ({ messageId: message.id, artifact: message.artifact! }));
+
+    if (textOnlyMessages.length === 0 && artifactsToSave.length === 0) {
+      toast('No generated contents to save in this chat.', { className: 'handwritten font-bold' });
+      return true;
+    }
+
+    const guestId = getOrCreateGuestId();
+    const savedMessageIds: string[] = [];
+    let savedText = false;
+
+    const saveArtifact = async (artifact: { type: string; data: any }, messageId?: string) => {
+      const response = await fetch('/api/archive?action=save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Guest-ID': guestId || ''
+        },
+        body: JSON.stringify({
+          sessionId: conversationId,
+          artifact
+        })
+      });
+
+      const result = await response.json();
+      if (response.ok && result.ok === true && result.archiveId) {
+        return messageId || 'text';
+      }
+      throw new Error(result.error || 'Save validation failed');
+    };
+
+    try {
+      const tasks = [
+        ...artifactsToSave.map(({ messageId, artifact }) => () => saveArtifact({ type: artifact.type, data: artifact.data }, messageId))
+      ];
+
+      if (textOnlyMessages.length > 0) {
+        tasks.push(() =>
+          saveArtifact(
+            {
+              type: 'save',
+              data: {
+                summary: conversationSummary || textOnlyMessages[textOnlyMessages.length - 1]?.text || '',
+                messages: textOnlyMessages
+              }
+            },
+            undefined
+          )
+        );
+      }
+
+      const results = await Promise.allSettled(tasks.map((task) => task()));
+
+      const failures = results.filter((result) => result.status === 'rejected');
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          if (result.value === 'text') {
+            savedText = true;
+          } else {
+            savedMessageIds.push(result.value);
+          }
+        }
+      });
+
+      if (savedMessageIds.length > 0) {
+        const updated = messages.map((message) =>
+          savedMessageIds.includes(message.id) && message.artifact
+            ? { ...message, artifact: { ...message.artifact, saved: true } }
+            : message
+        );
+        setMessages(updated);
+      }
+
+      if (failures.length > 0) {
+        toast.error('Some items failed to save. Please try again.', { className: 'handwritten font-bold' });
+        return false;
+      }
+
+      if (onHistorySync) {
+        onHistorySync();
+      }
+      const totalSaved = savedMessageIds.length + (savedText ? 1 : 0);
+      toast.success(`✅ Saved ${totalSaved} item${totalSaved === 1 ? '' : 's'} to archive.`, {
+        className: 'handwritten font-bold'
+      });
+      return true;
+    } catch (error) {
+      console.error('❌ Save all failed:', error);
+      toast.error('Failed to save all contents', { className: 'handwritten font-bold' });
+      return false;
+    }
+  };
+
+  const confirmNewChat = async () => {
+    if (isSavingAll) return;
+
+    if (saveAllOnConfirm) {
+      setIsSavingAll(true);
+      const saved = await saveAllArtifactsInChat();
+      setIsSavingAll(false);
+      if (!saved) return;
+    }
+
     // ✅ 使用全局 store 的 resetChat
     resetChat();
     setInputValue('');
     setShowNewChatDialog(false);
+    setSaveAllOnConfirm(false);
     
     toast.success('Started a new chat!', { className: 'handwritten font-bold' });
     console.log('🆕 Started new chat with conversationId:', conversationId);
@@ -947,17 +1073,35 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowNewChatDialog(false)}
-                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] text-[#1a1a1a] hand-drawn-border transition-colors"
+                disabled={isSavingAll}
+                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] text-[#1a1a1a] hand-drawn-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmNewChat}
-                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d] hand-drawn-border transition-colors"
+                disabled={isSavingAll}
+                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d] hand-drawn-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Confirm
+                {isSavingAll ? 'Saving...' : 'Confirm'}
+              </button>
+              <button
+                onClick={() => setSaveAllOnConfirm((prev) => !prev)}
+                disabled={isSavingAll}
+                className={`px-4 py-2 border-[2.5px] border-[#1a1a1a] hand-drawn-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                  saveAllOnConfirm
+                    ? 'bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d]'
+                    : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9]'
+                }`}
+              >
+                {saveAllOnConfirm ? 'Save All ✓' : 'Save All'}
               </button>
             </div>
+            {saveAllOnConfirm && (
+              <p className="mt-3 text-xs text-[#1a1a1a] opacity-70">
+                Save all will run when you confirm.
+              </p>
+            )}
           </div>
         </div>
       )}

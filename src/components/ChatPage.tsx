@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Network, Image as ImageIcon, Mic } from 'lucide-react';
+import { Network, Image as ImageIcon, Mic, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
-import { createChatArtifact, getChatMessages, sendChatMessage } from '../lib/api';
+import { createChatArtifact, getChatMessages, sendChatMessage, saveToArchive } from '../lib/api';
 import { getOrCreateChatSessionId, getChatMessagesKey, getOrCreateGuestId, resetChatSession, sanitizeMessagesForLocalStorage } from '../lib/guest';
 import mermaid from 'mermaid';
 import { useChatStore } from '../lib/chatStore';
@@ -109,6 +109,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [isGeneratingArtifact, setIsGeneratingArtifact] = useState(false);
   const [artifactType, setArtifactType] = useState<string>('');
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [showNewChatDialog, setShowNewChatDialog] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -152,6 +153,58 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
     loadHistoryMessages();
   }, [conversationId]); // conversationId 变化时重新加载
+
+  // 自动保存聊天历史（只保存文字，不保存图片）
+  useEffect(() => {
+    const autoSaveHistory = async () => {
+      // 只在有消息且有 AI 回复时才保存
+      if (messages.length < 2) return;
+      
+      // 过滤掉包含图片的消息，只保留文字对话
+      const textOnlyMessages = messages
+        .filter(msg => !msg.artifact || msg.artifact.type !== 'image')
+        .map(msg => ({
+          id: msg.id,
+          text: msg.text,
+          sender: msg.sender,
+          timestamp: msg.timestamp.toISOString()
+        }));
+      
+      if (textOnlyMessages.length === 0) return;
+      
+      // 生成标题（使用第一条用户消息或默认标题）
+      const firstUserMessage = messages.find(m => m.sender === 'user');
+      const title = firstUserMessage 
+        ? firstUserMessage.text.substring(0, 50) + (firstUserMessage.text.length > 50 ? '...' : '')
+        : 'Chat Session';
+      
+      // 获取最后一条消息作为摘要
+      const lastMessage = messages[messages.length - 1];
+      const content = lastMessage.text.substring(0, 200);
+      
+      try {
+        await saveToArchive({
+          title,
+          content,
+          messages: textOnlyMessages,
+          tags: ['auto-saved'],
+          previewImages: []  // 不保存图片
+        });
+        console.log('✅ Auto-saved chat history:', title);
+        
+        // 触发历史记录刷新
+        if (onHistorySync) {
+          onHistorySync();
+        }
+      } catch (error) {
+        console.error('❌ Failed to auto-save history:', error);
+      }
+    };
+    
+    // 使用防抖，避免频繁保存
+    const timer = setTimeout(autoSaveHistory, 2000);
+    return () => clearTimeout(timer);
+  }, [messages, onHistorySync]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -296,15 +349,17 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
   // ✅ New Chat 按钮：调用 store 的 resetChat
   const handleNewChat = () => {
-    if (messages.length > 0 && !confirm('开始新对话将清空当前消息。是否继续？')) {
-      return;
-    }
-    
+    console.log('handleNewChat clicked');
+    setShowNewChatDialog(true);
+  };
+
+  const confirmNewChat = () => {
     // ✅ 使用全局 store 的 resetChat
     resetChat();
     setInputValue('');
+    setShowNewChatDialog(false);
     
-    toast.success('开始新对话！', { className: 'handwritten font-bold' });
+    toast.success('Started a new chat!', { className: 'handwritten font-bold' });
     console.log('🆕 Started new chat with conversationId:', conversationId);
   };
 
@@ -347,7 +402,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
-        recognition.interimResults = false;
+        recognition.interimResults = true; // Enable interim results for real-time feedback
         recognition.lang = 'en-US';
 
         recognition.onstart = () => {
@@ -355,8 +410,23 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         };
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          setInputValue((prev) => prev + (prev ? ' ' : '') + transcript);
+          // Process all results to find the final one
+          let finalTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            
+            // Only append if this is a final result
+            if (result.isFinal) {
+              finalTranscript += result[0].transcript;
+            }
+            // Interim results are ignored - they're just for display/feedback
+          }
+          
+          // Only update input value with final results
+          if (finalTranscript) {
+            setInputValue((prev) => prev + (prev ? ' ' : '') + finalTranscript);
+          }
         };
 
         recognition.onend = () => {
@@ -396,6 +466,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const shouldShowActionBar = messages.length > 1 && lastMessage?.sender === 'bot' && inputValue.trim() === '';
 
   return (
+    <>
     <div className="h-screen flex flex-col max-w-6xl mx-auto">
       <Toaster
         position="top-center"
@@ -789,22 +860,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
       {/* Input */}
       <div className="border-t-3 border-[#1a1a1a] bg-[#faf8f3] px-8 py-6 hand-drawn-border z-20">
-        {/* New Chat Button - 显示在输入框上方 */}
-        {messages.length > 0 && (
-          <div className="flex justify-end mb-3">
-            <button
-              onClick={handleNewChat}
-              className="px-4 py-2 bg-[#faf8f3] text-[#1a1a1a] border-[2.5px] border-[#1a1a1a] hover:bg-[#e8e4d9] transition-colors hand-drawn-border flex items-center gap-2 group"
-              title="开始新对话（创建新的 session）"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-              <span className="text-sm font-bold handwritten">New Chat</span>
-            </button>
-          </div>
-        )}
-        
         <div className="flex gap-3">
           <input
             type="text"
@@ -814,6 +869,13 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
             placeholder="Type your message..."
             className="flex-1 px-5 py-3 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] focus:outline-none hand-drawn-border"
           />
+          <button
+            onClick={handleNewChat}
+            className="px-4 flex items-center justify-center border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] transition-colors sketch-btn hand-drawn-border"
+            title="Start a new chat"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
           <button
             onClick={handleVoiceInput}
             className={`px-4 flex items-center justify-center border-[2.5px] border-[#1a1a1a] transition-colors sketch-btn hand-drawn-border ${
@@ -834,6 +896,41 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
           </button>
         </div>
       </div>
+
+      {/* New Chat Confirmation Dialog - Custom Modal */}
+      {showNewChatDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          {/* Overlay */}
+          <div 
+            className="absolute inset-0 bg-black/50" 
+            onClick={() => setShowNewChatDialog(false)}
+          />
+          
+          {/* Dialog Content */}
+          <div className="relative bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] hand-drawn-border max-w-lg mx-4 p-6 z-10">
+            <h2 className="handwritten text-xl text-[#1a1a1a] mb-3">Start a New Chat?</h2>
+            <p className="text-[#1a1a1a] text-base mb-6">
+              Please save any images from your current chat to archive first. Once you start a new chat, you won't be able to go back to this conversation.
+            </p>
+            
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowNewChatDialog(false)}
+                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] text-[#1a1a1a] hand-drawn-border transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmNewChat}
+                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d] hand-drawn-border transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+    </>
   );
 }

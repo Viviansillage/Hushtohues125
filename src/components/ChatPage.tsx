@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Network, Image as ImageIcon, Save, Mic } from 'lucide-react';
+import { Network, Image as ImageIcon, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast, Toaster } from 'sonner@2.0.3';
+import { toast, Toaster } from 'sonner';
 import { createChatArtifact, getChatMessages, sendChatMessage } from '../lib/api';
+import { getOrCreateChatSessionId, getChatMessagesKey, getOrCreateGuestId, resetChatSession, sanitizeMessagesForLocalStorage } from '../lib/guest';
 import mermaid from 'mermaid';
+import { useChatStore } from '../lib/chatStore';
 
 interface Message {
   id: string;
@@ -13,7 +15,11 @@ interface Message {
   artifact?: {
     type: 'mindmap' | 'image' | 'save';
     data?: any;
+    artifactId?: string;  // 后端返回的artifactId
+    saved?: boolean;      // 是否已保存到archive
   };
+  provider?: string;  // AI provider name (e.g., 'Google Gemini')
+  model?: string;     // Model name (e.g., 'gemini-2.5-flash')
 }
 
 interface ChatPageProps {
@@ -33,7 +39,25 @@ const mapMessage = (message: { id: string; text: string; sender: 'user' | 'bot';
   timestamp: new Date(message.timestamp)
 });
 
-const CHAT_MESSAGES_KEY = 'hushtohues_chat_messages';
+/**
+ * 创建最小化上下文用于 artifact 生成
+ * - 只发送最后 N 条消息
+ * - 只包含纯文本，移除 artifacts
+ * - 截断每条消息以防止超长
+ * - 过滤掉任何包含 base64 的内容
+ */
+const buildMinimalContext = (messages: Message[], maxMessages = 8, maxLength = 1500): Array<{ role: 'user' | 'assistant'; content: string }> => {
+  // 取最后 N 条消息（减少到 8 条以确保安全）
+  const recentMessages = messages.slice(-maxMessages);
+  
+  return recentMessages
+    .filter(msg => !msg.text.includes('base64') && !msg.text.includes('data:image')) // 过滤 base64
+    .map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.text.substring(0, maxLength) // 截断到安全长度
+      // 明确不包含 artifact 数据
+  }));
+};
 
 // Mermaid 思维导图渲染组件
 const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }) => {
@@ -75,36 +99,59 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
 };
 
 export function ChatPage({ onHistorySync }: ChatPageProps) {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    // 初始化时从 localStorage 恢复
-    try {
-      const saved = localStorage.getItem(CHAT_MESSAGES_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.map(mapMessage);
-      }
-    } catch (error) {
-      console.error('Failed to load messages from localStorage', error);
-    }
-    return [];
-  });
+  // ✅ 使用全局 store，确保切页不丢
+  const { conversationId, messages, appendMessage, setMessages, resetChat } = useChatStore();
+  
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [useMockVoice, setUseMockVoice] = useState(false); // Fallback state for demo environments
+  const [useMockVoice, setUseMockVoice] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  // State to track if the Save button or its menu is being hovered
-  const [isSaveHovered, setIsSaveHovered] = useState(false);
+  const [isGeneratingArtifact, setIsGeneratingArtifact] = useState(false);
+  const [artifactType, setArtifactType] = useState<string>('');
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 保存 messages 到 localStorage
+  // ✅ 刷新时从数据库恢复历史消息
   useEffect(() => {
-    try {
-      localStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messages));
-    } catch (error) {
-      console.error('Failed to save messages to localStorage', error);
-    }
-  }, [messages]);
+    const loadHistoryMessages = async () => {
+      // 只在刷新后（messages 为空）加载
+      if (messages.length > 0) {
+        setIsLoadingHistory(false);
+        return;
+      }
+
+      try {
+        console.log('[ChatPage] 🔄 Loading history for sessionId:', conversationId);
+        const response = await fetch(`/api/chat?action=load&sessionId=${conversationId}`, {
+          headers: {
+            'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load history: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const loadedMessages = (data.messages || []).map(mapMessage);
+        
+        if (loadedMessages.length > 0) {
+          console.log('[ChatPage] ✅ Restored', loadedMessages.length, 'messages from DB');
+          setMessages(loadedMessages);
+        } else {
+          console.log('[ChatPage] ℹ️  No history found for this session');
+        }
+      } catch (error) {
+        console.error('[ChatPage] ❌ Failed to load history:', error);
+        // 静默失败，不影响用户继续使用
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadHistoryMessages();
+  }, [conversationId]); // conversationId 变化时重新加载
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -121,21 +168,27 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     setInputValue('');
     setIsSending(true);
 
-    // 立即显示用户消息
+    // ✅ 立即显示用户消息 - 使用 appendMessage
     const userMessage: Message = {
       id: `msg-${Date.now()}-u`,
       text: messageText,
       sender: 'user',
       timestamp: new Date()
     };
-    setMessages(prev => [...prev, userMessage]);
+    appendMessage(userMessage);
 
     try {
-      const response = await sendChatMessage(messageText, messages);
+      // ✅ 使用 store 的 conversationId
+      const response = await sendChatMessage(messageText, conversationId) as any;
+      
       // 只添加 AI 回复（最后一条消息）
       const aiMessage = response.messages[response.messages.length - 1];
       if (aiMessage && aiMessage.sender === 'bot') {
-        setMessages(prev => [...prev, mapMessage(aiMessage)]);
+        const mappedMessage = mapMessage(aiMessage);
+        // ✅ 添加 provider 和 model 信息
+        if (response.provider) mappedMessage.provider = response.provider;
+        if (response.model) mappedMessage.model = response.model;
+        appendMessage(mappedMessage);
       }
     } catch (error) {
       console.error('Failed to send message', error);
@@ -143,17 +196,40 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       console.error('Error details:', errorText);
       toast.error('Message failed to send.', { className: 'handwritten font-bold' });
       // 发送失败，移除刚才添加的用户消息
-      setMessages(prev => prev.filter(m => m.id !== userMessage.id));
+      setMessages(messages.filter((m: Message) => m.id !== userMessage.id));
     } finally {
       setIsSending(false);
     }
   };
 
   const handleArtifact = async (kind: string) => {
+    setIsGeneratingArtifact(true);
+    setArtifactType(kind);
+    
     try {
-      const response = await createChatArtifact(kind, messages);
+      // ✅ 使用 store 的 conversationId
+      console.log('📤 Creating artifact:', {
+        kind,
+        conversationId,
+        totalMessages: messages.length
+      });
       
-      // 创建带有 artifact 数据的消息
+      // 调用 API（后端从数据库读取 messages）
+      const response = await createChatArtifact(kind, conversationId);
+      
+      // ✅ 验证 image artifact 必须有 imageUrl
+      if (kind === 'image') {
+        // 优先读取 artifact.imageUrl，fallback 到 generatedImage.imageUrl
+        const imageUrl = response.artifact?.imageUrl || response.generatedImage?.imageUrl;
+        if (!imageUrl || !imageUrl.startsWith('http')) {
+          console.error('❌ Image artifact missing valid URL:', response);
+          toast.error('Image generation failed: no valid URL returned');
+          return;
+        }
+        console.log('✅ Image URL validated:', imageUrl);
+      }
+      
+      // 🔒 创建 artifact 消息：只存储 URL 和元数据，绝对不存 base64
       const artifactMessage: Message = {
         id: `msg-${Date.now()}-artifact`,
         text: response.message.text,
@@ -162,24 +238,74 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         artifact: {
           type: kind as 'mindmap' | 'image' | 'save',
           data: kind === 'mindmap' 
-            ? response.structuredMindmap 
+            ? {
+                mermaidCode: response.structuredMindmap?.mermaidCode,
+                title: response.structuredMindmap?.title,
+                summary: response.structuredMindmap?.summary
+              }
             : kind === 'image' 
-              ? response.generatedImage 
+              ? {
+                  // 优先从 artifact 读取，fallback 到 generatedImage
+                  imageUrl: response.artifact?.imageUrl || response.generatedImage?.imageUrl,
+                  title: response.artifact?.title || response.generatedImage?.title,
+                  summary: response.artifact?.summary || response.generatedImage?.summary,
+                  provider: response.artifact?.provider || response.generatedImage?.provider,
+                  model: response.artifact?.model || response.generatedImage?.model,
+                  storagePath: response.artifact?.storagePath
+                  // 明确不包含：imageBase64, inlineData, dataUrl, bytes
+                }
               : undefined
         }
       };
       
-      setMessages((prev) => [...prev, artifactMessage]);
-      onHistorySync?.();  // 这里才需要同步 Archive
-      toast.success(`Saved ${kind} to your archive.`, { className: 'handwritten font-bold' });
-      // 可选：保存后清空聊天（取消注释以启用）
-      // setMessages([]);
+      // ✅ 使用 store 的 appendMessage
+      appendMessage(artifactMessage);
+      
+      // ✅ 所有artifact只是生成成功，不自动保存到archive
+      const kindLabel = kind === 'mindmap' ? 'Mindmap' : kind === 'image' ? 'Image' : kind;
+      toast.success(`✅ ${kindLabel} generated successfully`, { 
+        className: 'handwritten font-bold',
+        duration: 3000
+      });
+      
     } catch (error) {
-      console.error('Failed to create artifact', error);
-      const errorText = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Error details:', errorText);
-      toast.error('Could not save that yet.', { className: 'handwritten font-bold' });
+      console.error('❌ Artifact creation failed:', error);
+      
+      // 🔥 改进错误处理：提取关键信息，避免巨大字符串
+      let errorMessage = 'Could not create artifact';
+      
+      if (error instanceof Error) {
+        try {
+          const errorData = JSON.parse(error.message);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          // 截断错误消息以防止 toast 过长
+          errorMessage = error.message?.substring(0, 150) || errorMessage;
+        }
+      }
+      
+      toast.error(errorMessage, { 
+        className: 'handwritten font-bold',
+        duration: 5000
+      });
+    } finally {
+      setIsGeneratingArtifact(false);
+      setArtifactType('');
     }
+  };
+
+  // ✅ New Chat 按钮：调用 store 的 resetChat
+  const handleNewChat = () => {
+    if (messages.length > 0 && !confirm('开始新对话将清空当前消息。是否继续？')) {
+      return;
+    }
+    
+    // ✅ 使用全局 store 的 resetChat
+    resetChat();
+    setInputValue('');
+    
+    toast.success('开始新对话！', { className: 'handwritten font-bold' });
+    console.log('🆕 Started new chat with conversationId:', conversationId);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -269,14 +395,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const lastMessage = messages[messages.length - 1];
   const shouldShowActionBar = messages.length > 1 && lastMessage?.sender === 'bot' && inputValue.trim() === '';
 
-  // Options for the save menu（映射到后端的 kind: mindmap/image/save）
-  const saveOptions = [
-    { id: 'image', label: 'Image', path: 'M 5 25 C 5 10 20 5 50 8 C 80 5 95 15 95 30 C 95 45 80 55 50 52 C 20 55 5 45 5 25' },
-    { id: 'mindmap', label: 'Mindmap', path: 'M 8 28 C 10 12 30 5 55 5 C 85 8 92 18 90 32 C 88 48 75 55 45 52 C 15 55 5 42 8 28' },
-    { id: 'save', label: 'Text', path: 'M 6 30 C 8 15 25 8 50 10 C 80 8 95 20 92 35 C 90 50 70 55 45 52 C 20 52 2 40 6 30' },
-    { id: 'save', label: 'All', path: 'M 10 28 C 10 12 30 8 52 8 C 85 10 95 22 92 35 C 85 50 65 55 40 52 C 15 50 5 40 10 28' }
-  ];
-
   return (
     <div className="h-screen flex flex-col max-w-6xl mx-auto">
       <Toaster
@@ -304,8 +422,16 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-8 py-6 relative">
-        <div className="space-y-6">
-          {messages.map((message) => (
+        {isLoadingHistory && messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-3"></div>
+              <p className="handwritten text-lg">Loading chat history...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {messages.map((message) => (
             <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={`max-w-2xl px-5 py-3 hand-drawn-border wireframe-shadow ${
@@ -317,51 +443,241 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                 {/* 渲染思维导图 */}
                 {message.artifact?.type === 'mindmap' && message.artifact.data && (
                   <div className="mt-4 p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
+                    {/* 头部 */}
                     <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
                       <span className="text-2xl">🧠</span>
                       <h3 className="font-bold text-xl text-gray-800">
                         {message.artifact.data.title || 'Mindmap'}
                       </h3>
                     </div>
+                    
+                    {/* 主内容区 */}
                     <div className="bg-white rounded-lg p-4 overflow-x-auto">
                       <MermaidMindmap 
                         mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
                         id={message.id}
                       />
                     </div>
+                    
+                    {/* 描述文字区 */}
                     {message.artifact.data.summary && (
                       <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
                     )}
+                    
+                    {/* 底部操作栏：右对齐 */}
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={async () => {
+                          if (message.artifact?.saved) return;
+                          try {
+                            console.log('[Mindmap Save] Sending request:', {
+                              sessionId: conversationId,
+                              artifactType: 'mindmap',
+                              guestId: localStorage.getItem('hushtohues_guest_id')
+                            });
+                            
+                            const response = await fetch('/api/archive?action=save', {
+                              method: 'POST',
+                              headers: { 
+                                'Content-Type': 'application/json',
+                                'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+                              },
+                              body: JSON.stringify({
+                                sessionId: conversationId,
+                                artifact: {
+                                  type: 'mindmap',
+                                  data: message.artifact?.data
+                                }
+                              })
+                            });
+                            
+                            const result = await response.json();
+                            console.log('[Mindmap Save] Response:', {
+                              status: response.status,
+                              ok: result.ok,
+                              archiveId: result.archiveId,
+                              totalArtifacts: result.totalArtifacts,
+                              actor: result.actor,
+                              sessionId: result.sessionId
+                            });
+                            
+                            // 严格校验：只有 ok=true 且有 archiveId 才算成功
+                            if (response.ok && result.ok === true && result.archiveId) {
+                              const updated = messages.map(m => 
+                                m.id === message.id && m.artifact
+                                  ? { ...m, artifact: { ...m.artifact, saved: true } }
+                                  : m
+                              );
+                              setMessages(updated);
+                              toast.success('✅ Mindmap saved to archive');
+                              // 立即刷新 History
+                              if (onHistorySync) {
+                                console.log('[Mindmap Save] Triggering history refresh');
+                                onHistorySync();
+                              }
+                            } else {
+                              console.error('[Mindmap Save] Failed:', result.error || 'Invalid response');
+                              throw new Error(result.error || 'Save validation failed');
+                            }
+                        } catch (err) {
+                          console.error('[Mindmap Save] Error:', err);
+                          toast.error('Failed to save mindmap');
+                        }
+                      }}
+                      disabled={message.artifact?.saved}
+                      className={`px-4 py-2 text-sm font-bold transition-all border-[2.5px] border-[#1a1a1a] hand-drawn-border ${
+                        message.artifact?.saved
+                          ? 'bg-[#e8e4d9] text-[#6d6d6d] cursor-not-allowed opacity-60'
+                          : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] hover:translate-y-[-1px]'
+                      }`}
+                      style={{ minWidth: '80px' }}
+                    >
+                      {message.artifact?.saved ? '✓ Saved' : 'Save'}
+                    </button>
+                    </div>
                   </div>
                 )}
 
                 {/* 渲染生成的图片 */}
                 {message.artifact?.type === 'image' && message.artifact.data && (
                   <div className="mt-4 p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
+                    {/* 头部 */}
                     <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
                       <span className="text-2xl">🎨</span>
                       <h3 className="font-bold text-xl text-gray-800">
                         {message.artifact.data.title || 'Generated Image'}
                       </h3>
                     </div>
+                    
+                    {/* 主内容区 */}
                     <div className="bg-white rounded-lg p-4">
-                      <img 
-                        src={message.artifact.data.url} 
-                        alt={message.artifact.data.title || 'AI Generated'}
-                        className="w-full rounded-lg shadow-md"
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://placehold.co/600x400/EEE/31343C?text=Loading...';
-                        }}
-                      />
+                      {message.artifact.data.imageUrl ? (
+                        <img 
+                          src={message.artifact.data.imageUrl} 
+                          alt={message.artifact.data.title || 'AI Generated'}
+                          className="w-full rounded-lg shadow-md"
+                          onError={(e) => {
+                            const failedUrl = e.currentTarget.src;
+                            console.error('❌ Image load failed:', failedUrl);
+                            console.error('   Expected Supabase Storage URL');
+                            e.currentTarget.src = 'https://placehold.co/600x400/EEE/31343C?text=Image+Load+Failed';
+                            e.currentTarget.alt = 'Failed to load: ' + failedUrl;
+                          }}
+                        />
+                      ) : (
+                        <div className="bg-gray-100 rounded-lg p-8 text-center text-gray-500">
+                          <p>Image URL not available</p>
+                        </div>
+                      )}
                     </div>
+                    
+                    {/* 描述文字区 */}
                     {message.artifact.data.summary && (
                       <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
+                    )}
+                    {/* 🔍 调试信息：显示 provider/model */}
+                    {(message.artifact.data.provider || message.artifact.data.model) && (
+                      <div className="mt-2 text-xs text-gray-400 font-mono">
+                        provider={message.artifact.data.provider || 'unknown'} | 
+                        model={message.artifact.data.model || 'unknown'}
+                      </div>
                     )}
                     {message.artifact.data.prompt && (
                       <details className="mt-2">
                         <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">View prompt</summary>
                         <p className="mt-1 text-xs text-gray-600 bg-gray-50 p-2 rounded">{message.artifact.data.prompt}</p>
                       </details>
+                    )}
+                    
+                    {/* 底部操作栏：右对齐 */}
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={async () => {
+                          if (message.artifact?.saved) return;
+                          try {
+                            console.log('[Image Save] Sending request:', {
+                              sessionId: conversationId,
+                              artifactType: 'image',
+                              guestId: localStorage.getItem('hushtohues_guest_id')
+                            });
+                            
+                            const response = await fetch('/api/archive?action=save', {
+                              method: 'POST',
+                              headers: { 
+                                'Content-Type': 'application/json',
+                                'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+                              },
+                              body: JSON.stringify({
+                                sessionId: conversationId,
+                                artifact: {
+                                  type: 'image',
+                                  data: message.artifact?.data
+                                }
+                              })
+                            });
+                            
+                              const result = await response.json();
+                            console.log('[Image Save] Response:', {
+                              status: response.status,
+                              ok: result.ok,
+                              archiveId: result.archiveId,
+                              totalArtifacts: result.totalArtifacts,
+                              actor: result.actor,
+                              sessionId: result.sessionId
+                            });
+                            
+                            // 严格校验：只有 ok=true 且有 archiveId 才算成功
+                            if (response.ok && result.ok === true && result.archiveId) {
+                              const updated = messages.map(m => 
+                                m.id === message.id && m.artifact
+                                  ? { ...m, artifact: { ...m.artifact, saved: true } }
+                                  : m
+                              );
+                              setMessages(updated);
+                              toast.success('✅ Image saved to archive');
+                              // 立即刷新 History
+                              if (onHistorySync) {
+                                console.log('[Image Save] Triggering history refresh');
+                                onHistorySync();
+                              }
+                            } else {
+                              console.error('[Image Save] Failed:', result.error || 'Invalid response');
+                              throw new Error(result.error || 'Save validation failed');
+                            }
+                          } catch (err) {
+                            console.error('[Image Save] Error:', err);
+                            toast.error('Failed to save image');
+                          }
+                        }}
+                        disabled={message.artifact?.saved}
+                        className={`px-4 py-2 text-sm font-bold transition-all border-[2.5px] border-[#1a1a1a] hand-drawn-border ${
+                          message.artifact?.saved
+                            ? 'bg-[#e8e4d9] text-[#6d6d6d] cursor-not-allowed opacity-60'
+                            : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] hover:translate-y-[-1px]'
+                        }`}
+                        style={{ minWidth: '80px' }}
+                      >
+                        {message.artifact?.saved ? '✓ Saved' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* ✅ 可观测性：显示 provider 和 model */}
+                {message.sender === 'bot' && (message.provider || message.model) && (
+                  <div className="mt-3 pt-2 border-t border-dashed border-gray-300 flex items-center gap-3 text-xs text-gray-500">
+                    {message.provider && (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                        {message.provider}
+                      </span>
+                    )}
+                    {message.model && (
+                      <span className="px-2 py-0.5 bg-gray-100 rounded font-mono">
+                        {message.model}
+                      </span>
                     )}
                   </div>
                 )}
@@ -384,6 +700,27 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                     <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                   </div>
                   <span className="text-sm text-[#6d6d6d]">AI is thinking...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Artifact generation indicator */}
+          {isGeneratingArtifact && (
+            <div className="flex justify-start">
+              <div className="max-w-2xl px-5 py-3 hand-drawn-border wireframe-shadow bg-[#faf8f3]">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
+                  <span className="text-sm text-[#6d6d6d]">
+                    {artifactType === 'image' && '🎨 Generating image...'}
+                    {artifactType === 'mindmap' && '🧠 Creating mindmap...'}
+                    {artifactType === 'save' && '💾 Saving to archive...'}
+                    {!artifactType && 'Processing...'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -441,81 +778,33 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                   </div>
                   <span className="text-xs font-bold handwritten text-[#1a1a1a]">Image</span>
                 </button>
-
-                {/* Save Button with Pop-out Menu */}
-                <div
-                  className="relative flex flex-col items-center gap-2"
-                  onMouseEnter={() => setIsSaveHovered(true)}
-                  onMouseLeave={() => setIsSaveHovered(false)}
-                >
-                  <button className="flex flex-col items-center gap-2 group transition-transform hover:-translate-y-1 relative z-20">
-                    <div className="relative flex items-center justify-center w-12 h-12 sketch-btn">
-                      <svg
-                        viewBox="0 0 100 100"
-                        className="absolute inset-0 w-full h-full text-[#1a1a1a] group-hover:text-[#4a4a4a] transition-colors"
-                        style={{ filter: 'url(#hand-drawn)' }}
-                      >
-                        <path
-                          d="M 60 95 C 30 92 10 70 12 40 C 15 15 40 5 65 8 C 90 12 95 40 90 70 C 85 90 70 95 55 92"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <Save className="w-5 h-5 text-[#1a1a1a] relative z-10" />
-                    </div>
-                    <span className="text-xs font-bold handwritten text-[#1a1a1a]">Save</span>
-                  </button>
-
-                  {/* Pop-out Menu */}
-                  <AnimatePresence>
-                    {isSaveHovered && (
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-14 flex flex-col gap-3 z-30">
-                        {saveOptions.map((option, index) => (
-                          <motion.button
-                            key={option.id}
-                            onClick={() => handleArtifact(option.id)}
-                            initial={{ opacity: 0, x: -15, scale: 0.8 }}
-                            animate={{ opacity: 1, x: 0, scale: 1 }}
-                            exit={{ opacity: 0, x: -10, scale: 0.8 }}
-                            transition={{
-                              duration: 0.3,
-                              delay: index * 0.05,
-                              type: 'spring',
-                              stiffness: 300,
-                              damping: 20
-                            }}
-                            className="relative flex items-center justify-center group/opt"
-                          >
-                            {/* Sketchy Oval Background */}
-                            <svg
-                              viewBox="0 0 100 60"
-                              className="absolute w-[120%] h-[140%] text-[#1a1a1a] opacity-80 group-hover/opt:text-[#4a4a4a] transition-colors"
-                              style={{ filter: 'url(#hand-drawn)' }}
-                            >
-                              <path d={option.path} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                            </svg>
-                            {/* Text */}
-                            <span className="relative z-10 px-4 py-2 text-sm font-bold handwritten text-[#1a1a1a] whitespace-nowrap">
-                              {option.label}
-                            </span>
-                          </motion.button>
-                        ))}
-                      </div>
-                    )}
-                  </AnimatePresence>
-                </div>
               </div>
             </div>
           )}
 
           <div ref={messagesEndRef} />
         </div>
+        )}
       </div>
 
       {/* Input */}
       <div className="border-t-3 border-[#1a1a1a] bg-[#faf8f3] px-8 py-6 hand-drawn-border z-20">
+        {/* New Chat Button - 显示在输入框上方 */}
+        {messages.length > 0 && (
+          <div className="flex justify-end mb-3">
+            <button
+              onClick={handleNewChat}
+              className="px-4 py-2 bg-[#faf8f3] text-[#1a1a1a] border-[2.5px] border-[#1a1a1a] hover:bg-[#e8e4d9] transition-colors hand-drawn-border flex items-center gap-2 group"
+              title="开始新对话（创建新的 session）"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span className="text-sm font-bold handwritten">New Chat</span>
+            </button>
+          </div>
+        )}
+        
         <div className="flex gap-3">
           <input
             type="text"

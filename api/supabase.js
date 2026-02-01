@@ -13,6 +13,76 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+/**
+ * 上传图片到 Supabase Storage
+ * @param {string} base64Data - Base64 编码的图片数据（不含 data:image/... 前缀）
+ * @param {string} mimeType - 图片 MIME 类型（如 image/png）
+ * @param {object} metadata - 元数据 {prompt, sessionId, actor}
+ * @returns {Promise<{publicUrl: string, storagePath: string}>}
+ */
+export async function uploadImageToStorage(base64Data, mimeType = 'image/png', metadata = {}) {
+  try {
+    // 1. 将 base64 转为 Buffer
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    // 2. 生成唯一文件名
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 9);
+    const ext = mimeType.split('/')[1] || 'png';
+    const fileName = `${timestamp}-${random}.${ext}`;
+    
+    // 3. 构建存储路径（按日期分组）
+    const date = new Date();
+    const dateFolder = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const storagePath = `artifacts/${dateFolder}/${fileName}`;
+    
+    console.log('[Storage] Uploading image:', {
+      storagePath,
+      size: buffer.length,
+      mimeType,
+      metadata: Object.keys(metadata)
+    });
+    
+    // 4. 上传到 Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('artifacts')  // bucket 名称
+      .upload(storagePath, buffer, {
+        contentType: mimeType,
+        cacheControl: '3600',
+        upsert: false,  // 不覆盖已存在文件
+        metadata: {
+          prompt: metadata.prompt?.substring(0, 500) || '',
+          sessionId: metadata.sessionId || '',
+          actorType: metadata.actor?.type || 'guest',
+          actorId: metadata.actor?.id || '',
+          createdAt: new Date().toISOString()
+        }
+      });
+    
+    if (error) {
+      console.error('[Storage] Upload failed:', error);
+      throw new Error(`Storage upload failed: ${error.message}`);
+    }
+    
+    // 5. 获取公开访问 URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('artifacts')
+      .getPublicUrl(storagePath);
+    
+    console.log('[Storage] ✅ Upload success:', {
+      publicUrl,
+      storagePath,
+      size: buffer.length
+    });
+    
+    return { publicUrl, storagePath };
+    
+  } catch (error) {
+    console.error('[Storage] Upload error:', error);
+    throw error;
+  }
+}
+
 let defaultProfileId = null;
 
 /**
@@ -258,3 +328,246 @@ export async function updateProfile(updates) {
     preferences: data.preferences || {}
   };
 }
+
+/**
+ * 保存消息到数据库
+ * @param {string} sessionId - 会话ID
+ * @param {object} message - 消息对象 { id, text, sender, timestamp }
+ * @param {object} actor - 用户对象 { type, id }
+ */
+export async function saveMessage(sessionId, message, actor) {
+  try {
+    // 1. 确保chat_session存在
+    const { data: session, error: sessionError } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .maybeSingle();
+    
+    if (sessionError) throw sessionError;
+    
+    if (!session) {
+      // 创建新session
+      const { error: createError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          session_id: sessionId,
+          owner_type: actor.type,
+          owner_id: actor.id,
+          title: 'New Chat',
+          message_count: 0,
+          created_at: new Date().toISOString()
+        });
+      
+      if (createError) throw createError;
+    }
+    
+    // 2. 插入消息
+    const { error: msgError } = await supabase
+      .from('chat_messages')
+      .insert({
+        session_id: sessionId,
+        message_id: message.id,
+        sender: message.sender,
+        text: message.text,
+        timestamp: message.timestamp || new Date().toISOString()
+      });
+    
+    if (msgError && !msgError.message?.includes('duplicate')) {
+      throw msgError;
+    }
+    
+    // 3. 更新session的message_count和last_message_at
+    // 先获取当前消息数量
+    const { data: currentSession } = await supabase
+      .from('chat_sessions')
+      .select('message_count')
+      .eq('session_id', sessionId)
+      .single();
+    
+    const newCount = (currentSession?.message_count || 0) + 1;
+    
+    const { error: updateError } = await supabase
+      .from('chat_sessions')
+      .update({
+        message_count: newCount,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('session_id', sessionId);
+    
+    if (updateError) console.warn('[saveMessage] Update count failed:', updateError);
+    
+    console.log('[saveMessage] ✅ Saved:', { sessionId, messageId: message.id, sender: message.sender });
+    return { success: true };
+    
+  } catch (error) {
+    console.error('[saveMessage] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * 批量保存消息（用于初始化或同步）
+ * @param {string} sessionId - 会话ID
+ * @param {Array} messages - 消息数组
+ * @param {object} actor - 用户对象
+ */
+export async function saveMessages(sessionId, messages, actor) {
+  try {
+    // 1. 确保session存在
+    const { data: session, error: sessionError } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .maybeSingle();
+    
+    if (sessionError) throw sessionError;
+    
+    if (!session) {
+      const { error: createError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          session_id: sessionId,
+          owner_type: actor.type,
+          owner_id: actor.id,
+          title: 'New Chat',
+          message_count: 0
+        });
+      
+      if (createError) throw createError;
+    }
+    
+    // 2. 批量插入消息（忽略重复）
+    const messagesToInsert = messages.map(msg => ({
+      session_id: sessionId,
+      message_id: msg.id,
+      sender: msg.sender,
+      text: msg.text,
+      timestamp: msg.timestamp || new Date().toISOString()
+    }));
+    
+    const { error: insertError } = await supabase
+      .from('chat_messages')
+      .upsert(messagesToInsert, { 
+        onConflict: 'session_id,message_id',
+        ignoreDuplicates: true 
+      });
+    
+    if (insertError) throw insertError;
+    
+    // 3. 更新session
+    const { error: updateError } = await supabase
+      .from('chat_sessions')
+      .update({
+        message_count: messages.length,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('session_id', sessionId);
+    
+    if (updateError) console.warn('[saveMessages] Update failed:', updateError);
+    
+    console.log('[saveMessages] ✅ Saved:', { sessionId, count: messages.length });
+    return { success: true, count: messages.length };
+    
+  } catch (error) {
+    console.error('[saveMessages] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * 从数据库获取会话的所有消息
+ * @param {string} sessionId - 会话ID
+ * @returns {Promise<Array>} 消息数组
+ */
+export async function getMessages(sessionId) {
+  try {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('timestamp', { ascending: true });
+    
+    if (error) throw error;
+    
+    const messages = (data || []).map(msg => ({
+      id: msg.message_id,
+      text: msg.text,
+      sender: msg.sender,
+      timestamp: msg.timestamp
+    }));
+    
+    console.log('[getMessages] ✅ Fetched:', { sessionId, count: messages.length });
+    return messages;
+    
+  } catch (error) {
+    console.error('[getMessages] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * 保存artifact到数据库
+ * @param {string} sessionId - 会话ID
+ * @param {object} artifact - { type, prompt, storagePath, publicUrl, provider, model, metadata }
+ */
+export async function saveArtifact(sessionId, artifact) {
+  try {
+    const { data, error } = await supabase
+      .from('artifacts')
+      .insert({
+        session_id: sessionId,
+        artifact_type: artifact.type,
+        prompt: artifact.prompt?.substring(0, 1000),
+        storage_path: artifact.storagePath,
+        public_url: artifact.publicUrl,
+        provider: artifact.provider,
+        model: artifact.model,
+        metadata: artifact.metadata || {},
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    console.log('[saveArtifact] ✅ Saved:', { 
+      sessionId, 
+      type: artifact.type, 
+      id: data.id 
+    });
+    
+    return data;
+    
+  } catch (error) {
+    console.error('[saveArtifact] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * 获取会话的所有artifacts
+ * @param {string} sessionId - 会话ID
+ * @returns {Promise<Array>} artifacts数组
+ */
+export async function getArtifacts(sessionId) {
+  try {
+    const { data, error } = await supabase
+      .from('artifacts')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    console.log('[getArtifacts] ✅ Fetched:', { sessionId, count: data?.length || 0 });
+    return data || [];
+    
+  } catch (error) {
+    console.error('[getArtifacts] Error:', error);
+    return [];
+  }
+}
+

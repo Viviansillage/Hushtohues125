@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Resizable } from 're-resizable';
-import { toast, Toaster } from 'sonner@2.0.3';
+import { toast, Toaster } from 'sonner';
 
 export interface CanvasItem {
   id: string;
@@ -140,7 +140,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         type: 'image',
         content: imgUrl,
         x: 60 + (index % 2 * 10), // Slight zigzag offset
-        y: 160 + (index * 420),   // Vertical spacing
+        y: 160 + (index * 420),   // Vertical spacing - 420px per image
         width: 400,
         height: 'auto',
         zIndex: index + 1
@@ -161,6 +161,12 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
     return generatedItems;
   });
+
+  // 计算需要的最小画布高度（基于图片数量）
+  const imageCount = item.images?.length || 0;
+  const calculatedMinHeight = imageCount > 0 
+    ? 160 + (imageCount * 420) + 200  // 起始位置 + (图片数 * 间距) + 底部留白
+    : 2000;  // 默认高度
 
   const bringToFront = (id: string) => {
     if (readOnly && isPreview) return;
@@ -572,13 +578,16 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
          )}
       </AnimatePresence>
 
-      {/* Main Canvas Area */}
+      {/* Main Canvas Area - With Scroll */}
       <div 
         ref={containerRef}
         id="canvas-area"
-        className={`flex-1 relative w-full h-full overflow-hidden ${isPreview || readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
+        className={`flex-1 relative overflow-y-auto overflow-x-hidden ${isPreview || readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
+        style={{ height: 'calc(100vh - 80px)' }}
         onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
       >
+        {/* 内层容器：提供足够高度触发滚动 */}
+        <div className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
         {/* Centered Title - Draggable */}
         <motion.div
            drag={!isPreview && !readOnly}
@@ -681,11 +690,11 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                        </div>
                      )}
                      
-      {/* AutoResizingTextarea passed readOnly prop */}
-      <AutoResizingTextarea 
-        item={item} 
-        readOnly={isPreview || readOnly}
-        onChange={(val) => {
+                     {/* AutoResizingTextarea passed readOnly prop */}
+                     <AutoResizingTextarea 
+                       item={item} 
+                       readOnly={isPreview || readOnly}
+                       onChange={(val) => {
                          const newItems = [...items];
                          const idx = newItems.findIndex(i => i.id === item.id);
                          newItems[idx].content = val;
@@ -703,6 +712,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                 ( Double click empty space to add text )
             </div>
         )}
+        </div>
       </div>
     </div>
   );

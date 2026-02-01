@@ -11,19 +11,66 @@ CREATE TABLE IF NOT EXISTS profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 聊天历史表
+-- 聊天会话表（存储每个聊天会话的元数据）
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id TEXT NOT NULL UNIQUE, -- 客户端生成的 sessionId
+  owner_type TEXT NOT NULL CHECK (owner_type IN ('user', 'guest')),
+  owner_id TEXT NOT NULL,
+  title TEXT,
+  message_count INTEGER DEFAULT 0,
+  last_message_at TIMESTAMPTZ,
+  is_public BOOLEAN DEFAULT false,
+  tags TEXT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 聊天消息表（存储会话中的每条消息）
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL, -- 客户端生成的消息ID
+  sender TEXT NOT NULL CHECK (sender IN ('user', 'bot')),
+  text TEXT NOT NULL,
+  timestamp TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(session_id, message_id)
+);
+
+-- Artifacts表（存储生成的图片、mindmap等）
+CREATE TABLE IF NOT EXISTS artifacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  artifact_type TEXT NOT NULL CHECK (artifact_type IN ('image', 'mindmap', 'save')),
+  prompt TEXT,
+  storage_path TEXT, -- Supabase Storage路径
+  public_url TEXT NOT NULL, -- 公开访问URL
+  provider TEXT, -- AI提供商(google-gemini等)
+  model TEXT, -- 使用的模型
+  metadata JSONB DEFAULT '{}', -- 其他元数据(title, summary等)
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 聊天历史表（兼容旧架构，用于展示Archive）
 CREATE TABLE IF NOT EXISTS chat_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  session_id TEXT REFERENCES chat_sessions(session_id) ON DELETE CASCADE, -- 关联新表
+  owner_type TEXT NOT NULL CHECK (owner_type IN ('user', 'guest')),
+  owner_id TEXT NOT NULL,
   title TEXT NOT NULL,
   message_count INTEGER DEFAULT 0,
   last_message TEXT,
   preview_images TEXT[] DEFAULT '{}',
   is_public BOOLEAN DEFAULT false,
   tags TEXT[] DEFAULT '{}',
+  content_json JSONB DEFAULT '{}', -- 存储额外数据
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  -- ✅ 确保同一session只有一个archive记录
+  UNIQUE(owner_type, owner_id, session_id)
 );
 
 -- 社区帖子表
@@ -80,7 +127,18 @@ CREATE TABLE IF NOT EXISTS user_bookmarks (
 );
 
 -- 创建索引以提升查询性能
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_owner ON chat_sessions(owner_type, owner_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_session_id ON chat_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_artifacts_session_id ON artifacts(session_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_history_profile ON chat_history(profile_id);
+CREATE INDEX IF NOT EXISTS idx_chat_history_session_id ON chat_history(session_id);
+CREATE INDEX IF Nsessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE artifacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_OT EXISTS idx_chat_history_owner ON chat_history(owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_chat_history_timestamp ON chat_history(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_community_posts_timestamp ON community_posts(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_user_likes_profile ON user_likes(profile_id);
@@ -99,7 +157,20 @@ ALTER TABLE user_bookmarks ENABLE ROW LEVEL SECURITY;
 -- 生产环境需要更细粒度的权限控制
 
 CREATE POLICY "Allow public read profiles" ON profiles FOR SELECT USING (true);
-CREATE POLICY "Allow public insert profiles" ON profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public insert prosessions" ON chat_sessions FOR SELECT USING (true);
+CREATE POLICY "Allow public insert chat_sessions" ON chat_sessions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update chat_sessions" ON chat_sessions FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete chat_sessions" ON chat_sessions FOR DELETE USING (true);
+
+CREATE POLICY "Allow public read chat_messages" ON chat_messages FOR SELECT USING (true);
+CREATE POLICY "Allow public insert chat_messages" ON chat_messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public delete chat_messages" ON chat_messages FOR DELETE USING (true);
+
+CREATE POLICY "Allow public read artifacts" ON artifacts FOR SELECT USING (true);
+CREATE POLICY "Allow public insert artifacts" ON artifacts FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public delete artifacts" ON artifacts FOR DELETE USING (true);
+
+CREATE POLICY "Allow public read chat_files" ON profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update profiles" ON profiles FOR UPDATE USING (true);
 
 CREATE POLICY "Allow public read chat_history" ON chat_history FOR SELECT USING (true);

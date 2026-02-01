@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { CanvasDetail } from './CanvasDetail';
 import { deleteHistoryItem } from '../lib/api';
@@ -13,6 +13,12 @@ export interface ChatHistory {
   previewImages: string[];
   isPublic: boolean;
   tags: string[];
+  artifacts?: Array<{  // 添加 artifacts 字段
+    kind: 'mindmap' | 'image' | 'save';
+    createdAt: string;
+    summary: string;
+    payload: any;
+  }>;
 }
 
 interface HistoryPageProps {
@@ -83,6 +89,46 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
   const [viewMode, setViewMode] = useState<'cards' | 'folders'>('cards');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatDetail, setSelectedChatDetail] = useState<any>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+  // 当选中 archive 时，加载完整详情（包含 artifacts）
+  useEffect(() => {
+    if (!selectedChatId) {
+      setSelectedChatDetail(null);
+      return;
+    }
+
+    const loadDetail = async () => {
+      setIsLoadingDetail(true);
+      try {
+        const response = await fetch(`/api/history?id=${selectedChatId}`, {
+          headers: {
+            'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+          }
+        });
+        if (!response.ok) throw new Error('Failed to load detail');
+        const data = await response.json();
+        
+        // 适配新的响应格式：{ ok: true, item: {...} }
+        const detail = data.ok ? data.item : data;
+        console.log('[HistoryPage] Loaded archive detail:', {
+          id: detail.id,
+          title: detail.title,
+          artifactCount: detail.artifacts?.length || 0
+        });
+        setSelectedChatDetail(detail);
+      } catch (error) {
+        console.error('Failed to load archive detail:', error);
+        toast.error('Failed to load archive detail');
+        setSelectedChatId(null);
+      } finally {
+        setIsLoadingDetail(false);
+      }
+    };
+
+    loadDetail();
+  }, [selectedChatId]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -128,17 +174,38 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
 
   // If a chat is selected, show the detail view
   if (selectedChatId) {
-    const selectedChat = history.find(c => c.id === selectedChatId);
-    if (selectedChat) {
+    if (isLoadingDetail) {
+      return (
+        <div className="h-screen flex items-center justify-center">
+          <div className="handwritten text-2xl">Loading archive...</div>
+        </div>
+      );
+    }
+
+    if (selectedChatDetail) {
+      // 从 artifacts 提取所有图片 URL（支持 type 和 kind 两种字段名）
+      const artifacts = selectedChatDetail.artifacts || [];
+      console.log('[HistoryPage] Rendering detail with artifacts:', artifacts);
+      
+      const imageArtifacts = artifacts.filter(
+        (artifact: any) => (artifact.type === 'image' || artifact.kind === 'image')
+      );
+      const allImages = imageArtifacts.map(
+        (artifact: any) => artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url
+      ).filter(Boolean);
+
+      // Fallback: 如果 artifacts 为空，使用 previewImages
+      const imagesToShow = allImages.length > 0 ? allImages : selectedChatDetail.previewImages;
+
       return (
         <CanvasDetail 
           item={{
-            id: selectedChat.id,
-            title: selectedChat.title,
-            images: selectedChat.previewImages,
-            content: selectedChat.lastMessage,
-            tags: selectedChat.tags,
-            isPublic: selectedChat.isPublic
+            id: selectedChatDetail.id,
+            title: selectedChatDetail.title,
+            images: imagesToShow,  // 使用从 artifacts 提取的所有图片
+            content: selectedChatDetail.lastMessage,
+            tags: selectedChatDetail.tags,
+            isPublic: selectedChatDetail.isPublic
           }}
           onClose={() => setSelectedChatId(null)} 
         />
@@ -147,8 +214,8 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
   }
 
   return (
-    <div className="h-screen overflow-y-auto" onClick={() => setEditingId(null)}>
-      <div className="max-w-6xl mx-auto px-8 py-8">
+    <div className="h-screen overflow-hidden" onClick={() => setEditingId(null)}>
+      <div className="h-full max-w-6xl mx-auto px-8 py-8 overflow-y-auto">
         <div className="flex justify-end items-end mb-8">
           <div className="flex gap-3 bg-[#faf8f3] p-1 border-[2px] border-[#1a1a1a] hand-drawn-border">
             <button

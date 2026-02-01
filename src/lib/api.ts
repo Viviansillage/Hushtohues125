@@ -1,4 +1,4 @@
-import { getOrCreateGuestId } from './guest';
+import { getOrCreateGuestId, sanitizeForApiRequest } from './guest';
 
 export type ApiChatMessage = {
   id: string;
@@ -105,12 +105,12 @@ export const updateProfile = (payload: Partial<ApiProfile>) =>
 export const getHistory = () => request<ApiHistoryItem[]>('/api/history');
 
 export const deleteHistoryItem = (id: string) =>
-  request<{ success: boolean; id: string }>(`/api/history/${id}`, {
+  request<{ success: boolean; id: string }>(`/api/history?id=${id}`, {
     method: 'DELETE'
   });
 
 export const updateHistoryItem = (id: string, payload: Partial<ApiHistoryItem>) =>
-  request<ApiHistoryItem>(`/api/history/${id}`, {
+  request<ApiHistoryItem>(`/api/history?id=${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
@@ -194,27 +194,105 @@ export const toggleCommunityDetailLike = async (name: string, id: string) => {
 export const getChatMessages = (conversationId?: string) => 
   Promise.resolve([]);  // 返回空数组
 
-export const sendChatMessage = (text: string, messages?: ApiChatMessage[]) =>
-  request<{ messages: ApiChatMessage[]; structured: ApiStructuredData }>('/api/chat?action=message', {
-    method: 'POST',
-    body: JSON.stringify({ text, messages })  // 传递当前 messages 作为上下文
-  });
+/**
+ * 从数据库加载会话消息（新架构）
+ * @param sessionId - 会话ID
+ * @returns 消息数组
+ */
+export const loadMessagesFromDB = async (sessionId: string): Promise<ApiChatMessage[]> => {
+  try {
+    const response = await request<{ messages: ApiChatMessage[] }>(`/api/chat?action=load&sessionId=${sessionId}`);
+    console.log('[loadMessagesFromDB] ✅ Loaded:', { sessionId, count: response.messages?.length || 0 });
+    return response.messages || [];
+  } catch (error) {
+    console.error('[loadMessagesFromDB] Error:', error);
+    return [];
+  }
+};
 
-export const createChatArtifact = (kind: string, messages: ApiChatMessage[]) =>
-  request<{ 
+/**
+ * 保存消息到数据库（新架构）
+ * @param sessionId - 会话ID
+ * @param message - 单条消息
+ */
+export const saveMessageToDB = async (sessionId: string, message: ApiChatMessage): Promise<void> => {
+  try {
+    await request('/api/chat?action=save', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, message })
+    });
+    console.log('[saveMessageToDB] ✅ Saved:', { sessionId, messageId: message.id });
+  } catch (error) {
+    console.error('[saveMessageToDB] Error:', error);
+    // 不抛出错误，静默失败
+  }
+};
+
+export const sendChatMessage = (text: string, sessionId: string) => {
+  // 新架构：不再发送messages数组，后端从DB获取
+  const payload = { text, sessionId };
+  const payloadStr = JSON.stringify(payload);
+  const sizeKB = new Blob([payloadStr]).size / 1024;
+  
+  console.log('📤 Sending message:', {
+    sessionId,
+    payloadSize: sizeKB.toFixed(1) + 'KB'
+  });
+  
+  return request<{ 
+    messages: ApiChatMessage[]; 
+    structured: ApiStructuredData;
+    provider?: string;  // AI provider (e.g., 'Google Gemini')
+    model?: string;     // Model name (e.g., 'gemini-2.5-flash')
+  }>('/api/chat?action=message', {
+    method: 'POST',
+    body: payloadStr
+  });
+};
+
+export const createChatArtifact = (
+  kind: string,
+  sessionId: string
+) => {
+  // 新架构：只发送kind和sessionId，后端从DB获取messages
+  const payload = { kind, sessionId };
+  const payloadStr = JSON.stringify(payload);
+  const sizeKB = new Blob([payloadStr]).size / 1024;
+  
+  console.log('📤 Creating artifact:', {
+    kind,
+    sessionId,
+    payloadSize: sizeKB.toFixed(1) + 'KB'
+  });
+  
+  return request<{ 
     history: ApiHistoryItem; 
     message: ApiChatMessage; 
     structuredMindmap?: any;
+    artifact?: {
+      type: 'image' | 'mindmap' | 'save';
+      imageUrl?: string;
+      storagePath?: string;
+      title?: string;
+      summary?: string;
+      prompt?: string;
+      provider?: string;
+      model?: string;
+      mermaidCode?: string;
+    };
     generatedImage?: {
-      url: string;
-      title: string;
-      summary: string;
-      prompt: string;
+      imageUrl: string;
+      title?: string;
+      summary?: string;
+      prompt?: string;
+      provider?: string;
+      model?: string;
     };
   }>('/api/chat?action=artifact', {
     method: 'POST',
-    body: JSON.stringify({ kind, messages })  // 只传 kind 和 messages
+    body: payloadStr
   });
+};
 
 // ============ Guest-first Demo 新增 API ============
 

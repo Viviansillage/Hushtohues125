@@ -478,6 +478,53 @@ export async function saveMessages(sessionId, messages, actor) {
 }
 
 /**
+ * 获取用户的所有聊天会话列表
+ * @param {object} actor - { type: 'user'|'guest', id: string }
+ * @returns {Promise<Array>} 会话数组
+ */
+export async function getChatSessions(actor) {
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('owner_type', actor.type)
+      .eq('owner_id', actor.id)
+      .order('last_message_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    // 为每个会话获取第一条消息作为预览
+    const sessions = await Promise.all((data || []).map(async (session) => {
+      // 获取第一条消息作为预览
+      const { data: messages } = await supabase
+        .from('chat_messages')
+        .select('text')
+        .eq('session_id', session.session_id)
+        .order('timestamp', { ascending: true })
+        .limit(1);
+      
+      const preview = messages && messages.length > 0 ? messages[0].text : '';
+      
+      return {
+        id: session.id,
+        sessionId: session.session_id,
+        title: session.title || 'Untitled Chat',
+        preview: preview.substring(0, 150),
+        messageCount: session.message_count || 0,
+        timestamp: session.last_message_at || session.created_at
+      };
+    }));
+    
+    console.log('[getChatSessions] ✅ Fetched:', { count: sessions.length });
+    return sessions;
+    
+  } catch (error) {
+    console.error('[getChatSessions] Error:', error);
+    return [];
+  }
+}
+
+/**
  * 从数据库获取会话的所有消息
  * @param {string} sessionId - 会话ID
  * @returns {Promise<Array>} 消息数组

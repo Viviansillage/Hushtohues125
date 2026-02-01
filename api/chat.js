@@ -883,6 +883,21 @@ export default async function handler(req, res) {
       }
     }
 
+    // ========== GET /api/chat?action=sessions - 获取所有聊天会话列表 ==========
+    if (req.method === 'GET' && action === 'sessions') {
+      try {
+        const { getChatSessions } = await import('./supabase.js');
+        const sessions = await getChatSessions(actor);
+        
+        console.log('[GET sessions] ✅ Loaded:', { count: sessions.length });
+        
+        return res.status(200).json({ sessions });
+      } catch (error) {
+        console.error('[GET sessions] ❌ Error:', error);
+        return res.status(500).json({ error: 'Failed to load sessions', details: error.message });
+      }
+    }
+
     // ========== GET /api/chat?action=load - 从DB加载消息 ==========
     if (req.method === 'GET' && action === 'load') {
       const { sessionId } = req.query;

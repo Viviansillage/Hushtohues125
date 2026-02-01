@@ -250,6 +250,26 @@ export const sendChatMessage = (text: string, sessionId: string) => {
   });
 };
 
+/**
+ * 获取所有聊天会话列表
+ * @returns 会话数组
+ */
+export const getChatSessions = () => request<{ 
+  sessions: Array<{
+    id: string;
+    sessionId: string;
+    title: string;
+    preview: string;
+    messageCount: number;
+    timestamp: string;
+  }>
+}>('/api/chat?action=sessions')
+  .then(res => res.sessions || [])
+  .catch(error => {
+    console.error('[getChatSessions] Error:', error);
+    return [];
+  });
+
 export const createChatArtifact = (
   kind: string,
   sessionId: string

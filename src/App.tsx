@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChatPage } from './components/ChatPage';
 import { HistoryPage, ChatHistory } from './components/HistoryPage';
+import { ChatHistoryPage, ChatSession } from './components/ChatHistoryPage';
 import { CommunityPage, Post, CommunityTag } from './components/CommunityPage';
 import { CommunityDetailPage } from './components/CommunityDetailPage';
 import { ProfilePage } from './components/ProfilePage';
@@ -11,6 +12,7 @@ import {
   ApiHistoryItem,
   ApiProfile,
   followCommunity,
+  getChatSessions,
   getCommunityMeta,
   getDiscoverFeed,
   getHistory,
@@ -34,13 +36,14 @@ const mapPost = (post: ApiCommunityPost): Post => ({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<
-    'chat' | 'history' | 'community' | 'profile' | 'community-detail'
+    'chat' | 'archive' | 'chat-history' | 'community' | 'profile' | 'community-detail'
   >('chat');
   const [viewingCommunity, setViewingCommunity] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
 
   const [history, setHistory] = useState<ChatHistory[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [communityPosts, setCommunityPosts] = useState<Post[]>([]);
   const [profile, setProfile] = useState<ApiProfile | null>(null);
   const [followedCommunities, setFollowedCommunities] = useState<CommunityTag[]>([]);
@@ -52,11 +55,12 @@ export default function App() {
     let isMounted = true;
     const load = async () => {
       try {
-        const [profileData, historyData, postData, communityMeta] = await Promise.all([
+        const [profileData, historyData, postData, communityMeta, sessionsData] = await Promise.all([
           getProfile(),
           getHistory(),
           getDiscoverFeed(),
-          getCommunityMeta()
+          getCommunityMeta(),
+          getChatSessions()
         ]);
 
         if (!isMounted) return;
@@ -68,6 +72,12 @@ export default function App() {
         setRecommendedCommunities(communityMeta.recommended);
         setLikedPosts(communityMeta.user.likes.filter((id) => !id.includes(':')));
         setBookmarkedPosts(communityMeta.user.bookmarks);
+        
+        // 加载聊天会话
+        setChatSessions(sessionsData.map(s => ({
+          ...s,
+          timestamp: new Date(s.timestamp)
+        })));
       } catch (error) {
         console.error('Failed to load app data', error);
       }
@@ -305,9 +315,9 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setCurrentPage('history')}
+              onClick={() => setCurrentPage('archive')}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
-                currentPage === 'history' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
+                currentPage === 'archive' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
             >
               <div className="w-5 h-5 flex items-center justify-center">
@@ -355,6 +365,21 @@ export default function App() {
                 </svg>
               </div>
               <span className="font-bold handwritten text-[#1a1a1a]">Archive</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentPage('chat-history')}
+              className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
+                currentPage === 'chat-history' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
+              }`}
+            >
+              <div className="w-5 h-5 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-full h-full text-[#1a1a1a]" style={{ filter: 'url(#hand-drawn)' }}>
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <path d="M12 6v6l4 2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <span className="font-bold handwritten text-[#1a1a1a]">History</span>
             </button>
 
             <button
@@ -423,12 +448,27 @@ export default function App() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
           {currentPage === 'chat' && <ChatPage onHistorySync={refreshHistory} />}
-          {currentPage === 'history' && (
+          {currentPage === 'archive' && (
             <HistoryPage
               onNavigateToCommunity={handleNavigateToCommunity}
               history={history}
               onUpdateHistory={handleUpdateHistory}
               onDeleteHistory={handleDeleteHistory}
+            />
+          )}
+          {currentPage === 'chat-history' && (
+            <ChatHistoryPage
+              sessions={chatSessions}
+              onSelectSession={(sessionId) => {
+                // TODO: Load session and switch to chat page
+                console.log('Load session:', sessionId);
+                setCurrentPage('chat');
+              }}
+              onDeleteSession={async (sessionId) => {
+                // TODO: Implement delete session API
+                console.log('Delete session:', sessionId);
+                setChatSessions(prev => prev.filter(s => s.sessionId !== sessionId));
+              }}
             />
           )}
           {currentPage === 'community' && (

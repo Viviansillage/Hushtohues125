@@ -509,10 +509,7 @@ async function callGemini(messages, userText, customPrompt = null) {
     });
   }
 
-  contents.push({
-    role: 'user',
-    parts: [{ text: userText }]
-  });
+  // 注意：不再额外添加 userText，因为它已经包含在 messages 数组的最后一条了
 
   console.log('[callGemini] 📦 Request contents length:', contents.length);
 
@@ -979,12 +976,12 @@ export default async function handler(req, res) {
         
         // 保存用户消息到DB
         await saveMessage(sessionId, userMessage, actor);
-        messages.push(userMessage);
 
         console.log(`[${requestId}] [POST message] Calling Gemini...`);
         
-        // 调用 Gemini
-        const geminiResponse = await callGemini(messages, text);
+        // 调用 Gemini - 传入包含用户消息的完整历史
+        const messagesWithUser = [...messages, userMessage];
+        const geminiResponse = await callGemini(messagesWithUser, text);
         const structured = safeParseGeminiJson(geminiResponse);
 
         console.log(`[${requestId}] [POST message] Gemini responded, saving bot message...`);
@@ -999,12 +996,14 @@ export default async function handler(req, res) {
         
         // 保存bot消息到DB
         await saveMessage(sessionId, botMessage, actor);
-        messages.push(botMessage);
+        
+        // 构建完整消息列表返回
+        const allMessages = [...messagesWithUser, botMessage];
 
-        console.log(`[${requestId}] [POST message] ✅ Saved to DB, returning:`, messages.length);
+        console.log(`[${requestId}] [POST message] ✅ Saved to DB, returning:`, allMessages.length);
 
         return res.status(200).json({
-          messages,
+          messages: allMessages,
           structured: {
             title: structured.title,
             summary: structured.summary,

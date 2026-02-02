@@ -26,11 +26,21 @@ interface ChatContextType {
   setMessages: (messages: Message[]) => void;
   resetChat: () => void;
   loadSession: (sessionId: string, messages: Message[]) => void;
+  saveCurrentSession: () => void;
+  restoreCurrentSession: () => boolean;
+  hasCurrentSession: () => boolean;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'hth_current_conversation_id';
+const TEMP_SESSION_KEY = 'hth_temp_session';
+
+interface TempSession {
+  conversationId: string;
+  messages: Message[];
+  timestamp: number;
+}
 
 function generateConversationId(): string {
   return `conv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -81,8 +91,59 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, sessionId);
   };
 
+  const saveCurrentSession = () => {
+    const tempSession: TempSession = {
+      conversationId,
+      messages,
+      timestamp: Date.now()
+    };
+    sessionStorage.setItem(TEMP_SESSION_KEY, JSON.stringify(tempSession));
+    console.log('💾 Saved current session:', conversationId, 'messages:', messages.length);
+  };
+
+  const restoreCurrentSession = (): boolean => {
+    const stored = sessionStorage.getItem(TEMP_SESSION_KEY);
+    if (!stored) return false;
+
+    try {
+      const tempSession: TempSession = JSON.parse(stored);
+      console.log('♻️ Restoring current session:', tempSession.conversationId, 'messages:', tempSession.messages.length);
+      setConversationId(tempSession.conversationId);
+      setMessagesState(tempSession.messages);
+      localStorage.setItem(STORAGE_KEY, tempSession.conversationId);
+      sessionStorage.removeItem(TEMP_SESSION_KEY);
+      return true;
+    } catch (error) {
+      console.error('Failed to restore session:', error);
+      sessionStorage.removeItem(TEMP_SESSION_KEY);
+      return false;
+    }
+  };
+
+  const hasCurrentSession = (): boolean => {
+    const stored = sessionStorage.getItem(TEMP_SESSION_KEY);
+    if (!stored) return false;
+
+    try {
+      JSON.parse(stored);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   return (
-    <ChatContext.Provider value={{ conversationId, messages, appendMessage, setMessages, resetChat, loadSession }}>
+    <ChatContext.Provider value={{ 
+      conversationId, 
+      messages, 
+      appendMessage, 
+      setMessages, 
+      resetChat, 
+      loadSession,
+      saveCurrentSession,
+      restoreCurrentSession,
+      hasCurrentSession
+    }}>
       {children}
     </ChatContext.Provider>
   );

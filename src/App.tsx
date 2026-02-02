@@ -43,7 +43,7 @@ export default function App() {
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
 
-  const { loadSession } = useChatStore();
+  const { loadSession, saveCurrentSession, restoreCurrentSession, hasCurrentSession } = useChatStore();
 
   const [history, setHistory] = useState<ChatHistory[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -385,7 +385,11 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setCurrentPage('chat-history')}
+              onClick={() => {
+                // 保存当前聊天状态
+                saveCurrentSession();
+                setCurrentPage('chat-history');
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'chat-history' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
@@ -479,6 +483,12 @@ export default function App() {
           {currentPage === 'chat-history' && (
             <ChatHistoryPage
               sessions={chatSessions}
+              hasCurrentSession={hasCurrentSession()}
+              onReturnToCurrent={() => {
+                if (restoreCurrentSession()) {
+                  setCurrentPage('chat');
+                }
+              }}
               onSelectSession={async (sessionId) => {
                 try {
                   console.log('[App] Loading session:', sessionId);

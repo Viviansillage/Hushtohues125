@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChatPage } from './components/ChatPage';
 import { HistoryPage, ChatHistory } from './components/HistoryPage';
 import { ChatHistoryPage, ChatSession } from './components/ChatHistoryPage';
+import { ChatHistoryDetailPage } from './components/ChatHistoryDetailPage';
 import { CommunityPage, Post, CommunityTag } from './components/CommunityPage';
 import { CommunityDetailPage } from './components/CommunityDetailPage';
 import { ProfilePage } from './components/ProfilePage';
@@ -37,13 +38,12 @@ const mapPost = (post: ApiCommunityPost): Post => ({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<
-    'chat' | 'archive' | 'chat-history' | 'community' | 'profile' | 'community-detail'
+    'chat' | 'archive' | 'chat-history' | 'chat-history-detail' | 'community' | 'profile' | 'community-detail'
   >('chat');
   const [viewingCommunity, setViewingCommunity] = useState<string | null>(null);
+  const [viewingHistorySession, setViewingHistorySession] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
-
-  const { loadSession, saveCurrentSession, restoreCurrentSession, hasCurrentSession } = useChatStore();
 
   const [history, setHistory] = useState<ChatHistory[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -311,13 +311,7 @@ export default function App() {
 
           <nav className="flex-1 space-y-3">
             <button
-              onClick={() => {
-                // 如果有保存的当前会话，先恢复再切换页面
-                if (hasCurrentSession()) {
-                  restoreCurrentSession();
-                }
-                setCurrentPage('chat');
-              }}
+              onClick={() => setCurrentPage('chat')}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'chat' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
@@ -391,11 +385,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => {
-                // 保存当前聊天状态
-                saveCurrentSession();
-                setCurrentPage('chat-history');
-              }}
+              onClick={() => setCurrentPage('chat-history')}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'chat-history' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
@@ -489,38 +479,10 @@ export default function App() {
           {currentPage === 'chat-history' && (
             <ChatHistoryPage
               sessions={chatSessions}
-              onSelectSession={async (sessionId) => {
-                try {
-                  console.log('[App] Loading session:', sessionId);
-                  
-                  // Load messages from the selected session
-                  const response = await fetch(`/api/chat?action=load&sessionId=${sessionId}`, {
-                    headers: {
-                      'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
-                    }
-                  });
-                  
-                  if (!response.ok) throw new Error('Failed to load session');
-                  
-                  const data = await response.json();
-                  const loadedMessages = (data.messages || []).map((msg: any) => ({
-                    ...msg,
-                    timestamp: new Date(msg.timestamp)
-                  }));
-                  
-                  console.log('[App] Loaded', loadedMessages.length, 'messages, calling loadSession');
-                  
-                  // Directly load the session into chat store
-                  loadSession(sessionId, loadedMessages);
-                  
-                  console.log('[App] Session loaded, switching to chat page');
-                  
-                  // Switch to chat page - messages should already be loaded
-                  setCurrentPage('chat');
-                } catch (error) {
-                  console.error('Failed to load session:', error);
-                  alert('Failed to load chat session');
-                }
+              onSelectSession={(sessionId) => {
+                // 跳转到只读的历史详情页，不覆盖当前chat状态
+                setViewingHistorySession(sessionId);
+                setCurrentPage('chat-history-detail');
               }}
               onDeleteSession={async (sessionId) => {
                 try {
@@ -545,6 +507,12 @@ export default function App() {
               onToggleBookmark={handleToggleBookmark}
               onFollowCommunity={handleFollowCommunity}
               onUnfollowCommunity={handleUnfollowCommunity}
+            />
+          )}
+          {currentPage === 'chat-history-detail' && viewingHistorySession && (
+            <ChatHistoryDetailPage 
+              sessionId={viewingHistorySession} 
+              onBack={() => setCurrentPage('chat-history')} 
             />
           )}
           {currentPage === 'community-detail' && viewingCommunity && (

@@ -70,6 +70,13 @@ app.get('/api/history', (_req, res) => {
   res.json(db.history);
 });
 
+app.get('/api/history/:id', (req, res) => {
+  const db = loadDb();
+  const target = db.history.find((item) => item.id === req.params.id);
+  if (!target) return sendNotFound(res, 'History item not found');
+  res.json({ ok: true, item: { ...target, artifacts: target.artifacts || [] } });
+});
+
 app.patch('/api/history/:id', (req, res) => {
   const db = loadDb();
   const target = db.history.find((item) => item.id === req.params.id);

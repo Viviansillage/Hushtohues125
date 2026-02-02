@@ -2,11 +2,13 @@ import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Resizable } from 're-resizable';
 import { toast, Toaster } from 'sonner';
+import mermaid from 'mermaid';
 
 export interface CanvasItem {
   id: string;
   title: string;
   images: string[];
+  mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
   content: string;
   tags?: string[];
   isPublic?: boolean;
@@ -19,13 +21,14 @@ export interface CanvasItem {
 
 export interface DraggableItem {
   id: string;
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'mindmap';
   content: string;
   x: number;
   y: number;
   width: number | string;
   height: number | string;
   zIndex: number;
+  meta?: { title?: string; summary?: string };
 }
 
 interface CanvasDetailProps {
@@ -110,6 +113,42 @@ const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableIte
   );
 };
 
+const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }) => {
+  const mermaidRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (mermaidRef.current && mermaidCode) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        mindmap: {
+          padding: 20,
+          useMaxWidth: true
+        }
+      });
+
+      const renderMindmap = async () => {
+        try {
+          const { svg } = await mermaid.render(`archive-mermaid-${id}`, mermaidCode);
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = svg;
+          }
+        } catch (error) {
+          console.error('Mermaid render error:', error);
+          if (mermaidRef.current) {
+            mermaidRef.current.innerHTML = '<p class="text-red-500">Failed to render mindmap</p>';
+          }
+        }
+      };
+
+      renderMindmap();
+    }
+  }, [mermaidCode, id]);
+
+  return <div ref={mermaidRef} className="mermaid-container"></div>;
+};
+
 export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailProps) => {
   const [title, setTitle] = useState(item.title);
   // Default isPreview to readOnly (true in community view, false in archive edit)
@@ -132,6 +171,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     const generatedItems: DraggableItem[] = [];
     const hasImages = item.images && item.images.length > 0;
     const imagesToLoad = hasImages ? item.images : [];
+    const mindmapsToLoad = item.mindmaps || [];
     
     // Stack images vertically on the left
     imagesToLoad.forEach((imgUrl, index) => {
@@ -144,6 +184,21 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         width: 400,
         height: 'auto',
         zIndex: index + 1
+      });
+    });
+
+    mindmapsToLoad.forEach((mindmap, index) => {
+      const positionIndex = imagesToLoad.length + index;
+      generatedItems.push({
+        id: `mindmap-${index}`,
+        type: 'mindmap',
+        content: mindmap.mermaidCode,
+        x: 60 + (positionIndex % 2 * 10),
+        y: 160 + (positionIndex * 420),
+        width: 420,
+        height: 280,
+        zIndex: positionIndex + 1,
+        meta: { title: mindmap.title, summary: mindmap.summary }
       });
     });
 
@@ -680,6 +735,33 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                             maskImage: 'linear-gradient(45deg, transparent 5px, black 5px)'
                          }}
                     ></div>
+                  </div>
+                ) : item.type === 'mindmap' ? (
+                  <div className={`relative p-4 bg-white shadow-lg ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
+                    <div 
+                      className="absolute inset-0 border-[3px] border-[#1a1a1a] pointer-events-none"
+                      style={{
+                        borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px',
+                        filter: 'url(#hand-drawn-border)'
+                      }}
+                    ></div>
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">🧠</span>
+                        <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
+                          {item.meta?.title || 'Mindmap'}
+                        </h3>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
+                        <MermaidMindmap
+                          mermaidCode={item.content || 'mindmap\n  root((Empty))'}
+                          id={item.id}
+                        />
+                      </div>
+                      {item.meta?.summary && (
+                        <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="relative group/text pt-2 pb-2">

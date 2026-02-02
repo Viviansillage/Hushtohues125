@@ -102,7 +102,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
     const loadDetail = async () => {
       setIsLoadingDetail(true);
       try {
-        const response = await fetch(`/api/history?id=${selectedChatId}`, {
+        const response = await fetch(`/api/history/${selectedChatId}`, {
           headers: {
             'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
           }
@@ -194,6 +194,24 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         (artifact: any) => artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url
       ).filter(Boolean);
 
+      const mindmapArtifacts = artifacts
+        .filter((artifact: any) => artifact.type === 'mindmap' || artifact.kind === 'mindmap')
+        .map((artifact: any) => ({
+          mermaidCode:
+            artifact.data?.mermaidCode ||
+            artifact.payload?.mermaidCode ||
+            artifact.payload?.structuredMindmap?.mermaidCode,
+          title:
+            artifact.data?.title ||
+            artifact.payload?.title ||
+            artifact.payload?.structuredMindmap?.title,
+          summary:
+            artifact.data?.summary ||
+            artifact.payload?.summary ||
+            artifact.payload?.structuredMindmap?.summary
+        }))
+        .filter((mindmap: any) => !!mindmap.mermaidCode);
+
       // Fallback: 如果 artifacts 为空，使用 previewImages
       const imagesToShow = allImages.length > 0 ? allImages : selectedChatDetail.previewImages;
 
@@ -203,6 +221,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
             id: selectedChatDetail.id,
             title: selectedChatDetail.title,
             images: imagesToShow,  // 使用从 artifacts 提取的所有图片
+            mindmaps: mindmapArtifacts,
             content: selectedChatDetail.lastMessage,
             tags: selectedChatDetail.tags,
             isPublic: selectedChatDetail.isPublic

@@ -32,6 +32,93 @@ const createHistoryFromChat = (db, text, kind = 'chat') => {
   return newHistory;
 };
 
+const buildMindmapStructured = (seedText) => {
+  const title = seedText ? seedText.split(' ').slice(0, 4).join(' ') : 'Mindmap';
+  const safeTitle = title || 'Mindmap';
+  const mermaidCode = `mindmap\n  root((${safeTitle}))\n    Key point\n      Detail A\n      Detail B\n    Insight\n      Next step`;
+  return {
+    mermaidCode,
+    title: safeTitle,
+    summary: 'Local preview mindmap'
+  };
+};
+
+const handleChatMessage = (db, text) => {
+  const now = new Date().toISOString();
+  const userMessage = {
+    id: `${Date.now()}-u`,
+    text,
+    sender: 'user',
+    timestamp: now
+  };
+  db.chat.messages.push(userMessage);
+
+  const botMessage = {
+    id: `${Date.now()}-b`,
+    text:
+      'Got it. I can turn that into a sketch, a prompt, or a clean summary. Want a mindmap or an image?',
+    sender: 'bot',
+    timestamp: new Date().toISOString()
+  };
+  db.chat.messages.push(botMessage);
+
+  if (db.profile.preferences.saveHistory) {
+    if (!db.chat.activeHistoryId) {
+      const newHistory = createHistoryFromChat(db, text, 'chat');
+      db.chat.activeHistoryId = newHistory.id;
+    } else {
+      const historyItem = db.history.find((item) => item.id === db.chat.activeHistoryId);
+      if (historyItem) {
+        historyItem.messageCount += 1;
+        historyItem.lastMessage = text;
+        historyItem.timestamp = now;
+      }
+    }
+  }
+
+  return { messages: db.chat.messages };
+};
+
+const handleChatArtifact = (db, kind) => {
+  const latestUser = [...db.chat.messages].reverse().find((msg) => msg.sender === 'user');
+  const seedText = latestUser ? latestUser.text : '';
+  const newHistory = createHistoryFromChat(db, seedText, kind);
+
+  if (kind === 'image') {
+    newHistory.previewImages = [
+      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80'
+    ];
+  }
+  if (kind === 'mindmap') {
+    newHistory.previewImages = [
+      'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&w=1200&q=80'
+    ];
+  }
+
+  const botMessage = {
+    id: `${Date.now()}-a`,
+    text: `Saved a ${kind} artifact to your archive.`,
+    sender: 'bot',
+    timestamp: new Date().toISOString()
+  };
+  db.chat.messages.push(botMessage);
+
+  const response = { history: newHistory, message: botMessage };
+  if (kind === 'mindmap') {
+    response.structuredMindmap = buildMindmapStructured(seedText);
+  }
+  if (kind === 'image') {
+    response.generatedImage = {
+      imageUrl:
+        'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
+      title: seedText ? seedText.split(' ').slice(0, 4).join(' ') : 'Generated Image',
+      summary: 'Local preview image'
+    };
+  }
+
+  return response;
+};
+
 const ensureCommunityDetail = (db, name) => {
   if (!db.communityDetail[name]) {
     db.communityDetail[name] = {
@@ -238,70 +325,39 @@ app.post('/api/chat/message', (req, res) => {
   const text = String(req.body.text || '').trim();
   if (!text) return res.status(400).json({ error: 'Message text required' });
 
-  const now = new Date().toISOString();
-  const userMessage = {
-    id: `${Date.now()}-u`,
-    text,
-    sender: 'user',
-    timestamp: now
-  };
-  db.chat.messages.push(userMessage);
-
-  const botMessage = {
-    id: `${Date.now()}-b`,
-    text:
-      'Got it. I can turn that into a sketch, a prompt, or a clean summary. Want a mindmap or an image?',
-    sender: 'bot',
-    timestamp: new Date().toISOString()
-  };
-  db.chat.messages.push(botMessage);
-
-  if (db.profile.preferences.saveHistory) {
-    if (!db.chat.activeHistoryId) {
-      const newHistory = createHistoryFromChat(db, text, 'chat');
-      db.chat.activeHistoryId = newHistory.id;
-    } else {
-      const historyItem = db.history.find((item) => item.id === db.chat.activeHistoryId);
-      if (historyItem) {
-        historyItem.messageCount += 1;
-        historyItem.lastMessage = text;
-        historyItem.timestamp = now;
-      }
-    }
-  }
-
+  const response = handleChatMessage(db, text);
   saveDb(db);
-  res.json({ messages: db.chat.messages });
+  res.json(response);
 });
 
 app.post('/api/chat/artifact', (req, res) => {
   const db = loadDb();
   const kind = String(req.body.kind || 'text').toLowerCase();
-  const latestUser = [...db.chat.messages].reverse().find((msg) => msg.sender === 'user');
-  const seedText = latestUser ? latestUser.text : '';
-  const newHistory = createHistoryFromChat(db, seedText, kind);
-
-  if (kind === 'image') {
-    newHistory.previewImages = [
-      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80'
-    ];
-  }
-  if (kind === 'mindmap') {
-    newHistory.previewImages = [
-      'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&w=1200&q=80'
-    ];
-  }
-
-  const botMessage = {
-    id: `${Date.now()}-a`,
-    text: `Saved a ${kind} artifact to your archive.`,
-    sender: 'bot',
-    timestamp: new Date().toISOString()
-  };
-  db.chat.messages.push(botMessage);
+  const response = handleChatArtifact(db, kind);
   saveDb(db);
+  res.json(response);
+});
 
-  res.json({ history: newHistory, message: botMessage });
+app.post('/api/chat', (req, res) => {
+  const action = String(req.query.action || '');
+  const db = loadDb();
+
+  if (action === 'message') {
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'Message text required' });
+    const response = handleChatMessage(db, text);
+    saveDb(db);
+    return res.json(response);
+  }
+
+  if (action === 'artifact') {
+    const kind = String(req.body.kind || 'text').toLowerCase();
+    const response = handleChatArtifact(db, kind);
+    saveDb(db);
+    return res.json(response);
+  }
+
+  return res.status(400).json({ error: 'Invalid action' });
 });
 
 app.listen(port, () => {

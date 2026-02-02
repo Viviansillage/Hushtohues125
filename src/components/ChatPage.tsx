@@ -5,6 +5,8 @@ import { toast, Toaster } from 'sonner';
 import { createChatArtifact, getChatMessages, sendChatMessage, saveToArchive } from '../lib/api';
 import { getOrCreateChatSessionId, getChatMessagesKey, getOrCreateGuestId, resetChatSession, sanitizeMessagesForLocalStorage } from '../lib/guest';
 import mermaid from 'mermaid';
+import { MindmapEditor } from './MindmapEditor';
+import { parseMermaidToMindmap } from '../lib/mindmap';
 import { useChatStore } from '../lib/chatStore';
 
 interface Message {
@@ -285,6 +287,9 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       }
       
       // 🔒 创建 artifact 消息：只存储 URL 和元数据，绝对不存 base64
+      const mindmapMermaid = response.structuredMindmap?.mermaidCode;
+      const mindmapJson = mindmapMermaid ? parseMermaidToMindmap(mindmapMermaid) : null;
+
       const artifactMessage: Message = {
         id: `msg-${Date.now()}-artifact`,
         text: response.message.text,
@@ -296,7 +301,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
             ? {
                 mermaidCode: response.structuredMindmap?.mermaidCode,
                 title: response.structuredMindmap?.title,
-                summary: response.structuredMindmap?.summary
+                summary: response.structuredMindmap?.summary,
+                mindmapJson
               }
             : kind === 'image' 
               ? {
@@ -388,6 +394,18 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     let savedText = false;
 
     const saveArtifact = async (artifact: { type: string; data: any }, messageId?: string) => {
+      const normalizedArtifact =
+        artifact.type === 'mindmap'
+          ? {
+              ...artifact,
+              data: {
+                ...artifact.data,
+                mindmapJson:
+                  artifact.data?.mindmapJson || parseMermaidToMindmap(artifact.data?.mermaidCode)
+              }
+            }
+          : artifact;
+
       const response = await fetch('/api/archive?action=save', {
         method: 'POST',
         headers: {
@@ -396,7 +414,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         },
         body: JSON.stringify({
           sessionId: conversationId,
-          artifact
+          artifact: normalizedArtifact
         })
       });
 
@@ -650,10 +668,19 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                     
                     {/* 主内容区 */}
                     <div className="bg-white rounded-lg p-4 overflow-x-auto">
-                      <MermaidMindmap 
-                        mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
-                        id={message.id}
-                      />
+                      {(() => {
+                        const mindmapJson =
+                          message.artifact.data.mindmapJson ||
+                          parseMermaidToMindmap(message.artifact.data.mermaidCode);
+                        return mindmapJson ? (
+                          <MindmapEditor value={mindmapJson} readOnly height={260} />
+                        ) : (
+                          <MermaidMindmap 
+                            mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
+                            id={message.id}
+                          />
+                        );
+                      })()}
                     </div>
                     
                     {/* 描述文字区 */}
@@ -673,6 +700,10 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                               guestId: localStorage.getItem('hushtohues_guest_id')
                             });
                             
+                            const mindmapData = message.artifact?.data || {};
+                            const mindmapJson =
+                              mindmapData.mindmapJson || parseMermaidToMindmap(mindmapData.mermaidCode);
+
                             const response = await fetch('/api/archive?action=save', {
                               method: 'POST',
                               headers: { 
@@ -683,7 +714,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                                 sessionId: conversationId,
                                 artifact: {
                                   type: 'mindmap',
-                                  data: message.artifact?.data
+                                  data: { ...mindmapData, mindmapJson }
                                 }
                               })
                             });

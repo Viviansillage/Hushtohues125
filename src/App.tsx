@@ -311,7 +311,13 @@ export default function App() {
 
           <nav className="flex-1 space-y-3">
             <button
-              onClick={() => setCurrentPage('chat')}
+              onClick={() => {
+                // 如果有保存的当前会话，先恢复再切换页面
+                if (hasCurrentSession()) {
+                  restoreCurrentSession();
+                }
+                setCurrentPage('chat');
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'chat' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
@@ -468,10 +474,18 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          {currentPage === 'chat' && <ChatPage onHistorySync={() => {
-            refreshHistory();
-            refreshChatSessions();
-          }} />}
+          {currentPage === 'chat' && <ChatPage 
+            onHistorySync={() => {
+              refreshHistory();
+              refreshChatSessions();
+            }}
+            onReturnToCurrent={() => {
+              if (restoreCurrentSession()) {
+                // 会话已恢复，无需额外操作
+              }
+            }}
+            hasCurrentSession={hasCurrentSession()}
+          />}
           {currentPage === 'archive' && (
             <HistoryPage
               onNavigateToCommunity={handleNavigateToCommunity}

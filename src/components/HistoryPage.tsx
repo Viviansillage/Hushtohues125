@@ -4,6 +4,7 @@ import { CanvasDetail } from './CanvasDetail';
 import { deleteHistoryItem } from '../lib/api';
 import { toast } from 'sonner';
 import { ensureMindmapJson } from '../lib/mindmap';
+import { buildExcalidrawSceneFromMindmap } from '../lib/excalidrawMindmap';
 
 export interface ChatHistory {
   id: string;
@@ -199,9 +200,14 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         .filter((artifact: any) => artifact.type === 'mindmap' || artifact.kind === 'mindmap')
         .map((artifact: any) => {
           const json = ensureMindmapJson(artifact);
-          if (!json) return null;
+          const excalidraw =
+            artifact.data?.excalidraw ||
+            artifact.payload?.excalidraw ||
+            (json ? buildExcalidrawSceneFromMindmap(json) : null);
+          if (!json && !excalidraw) return null;
           return {
             json,
+            excalidraw,
             title:
               artifact.data?.title ||
               artifact.payload?.title ||

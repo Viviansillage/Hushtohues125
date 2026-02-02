@@ -5,12 +5,13 @@ import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
 import { MindmapEditor } from './MindmapEditor';
 import { MindmapJson } from '../lib/mindmap';
+import { buildExcalidrawSceneFromMindmap, ExcalidrawScene } from '../lib/excalidrawMindmap';
 
 export interface CanvasItem {
   id: string;
   title: string;
   images: string[];
-  mindmaps?: Array<{ json: MindmapJson; title?: string; summary?: string }>;
+  mindmaps?: Array<{ json?: MindmapJson | null; excalidraw?: ExcalidrawScene | null; title?: string; summary?: string }>;
   content: string;
   tags?: string[];
   isPublic?: boolean;
@@ -31,7 +32,7 @@ export interface DraggableItem {
   height: number | string;
   zIndex: number;
   meta?: { title?: string; summary?: string };
-  mindmap?: MindmapJson;
+  mindmap?: MindmapJson | ExcalidrawScene | null;
 }
 
 interface CanvasDetailProps {
@@ -192,6 +193,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
     mindmapsToLoad.forEach((mindmap, index) => {
       const positionIndex = imagesToLoad.length + index;
+      const mindmapScene =
+        mindmap.excalidraw ||
+        (mindmap.json ? buildExcalidrawSceneFromMindmap(mindmap.json) : null);
       generatedItems.push({
         id: `mindmap-${index}`,
         type: 'mindmap',
@@ -202,7 +206,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         height: 280,
         zIndex: positionIndex + 1,
         meta: { title: mindmap.title, summary: mindmap.summary },
-        mindmap: mindmap.json
+        mindmap: mindmapScene
       });
     });
 

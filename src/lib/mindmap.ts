@@ -35,18 +35,14 @@ const normalizeLabel = (label: string) => {
 
 export const parseMermaidToMindmap = (mermaidCode?: string | null): MindmapJson | null => {
   if (!mermaidCode) return null;
-  const cleaned = mermaidCode
-    .replace(/```mermaid/gi, '')
-    .replace(/```/g, '')
-    .trim();
-  const lines = cleaned
+  const lines = mermaidCode
     .split('\n')
     .map((line) => line.replace(/\t/g, '  '))
     .filter((line) => line.trim().length > 0);
 
   if (lines.length === 0) return null;
 
-  if (lines[0].trim().toLowerCase().startsWith('mindmap')) {
+  if (lines[0].trim().toLowerCase() === 'mindmap') {
     lines.shift();
   }
 
@@ -60,7 +56,7 @@ export const parseMermaidToMindmap = (mermaidCode?: string | null): MindmapJson 
     if (!match) continue;
     const indent = match[1].length;
     const depth = Math.floor(indent / 2);
-    const label = normalizeLabel(match[2].replace(/:::.*/, ''));
+    const label = normalizeLabel(match[2]);
     if (!label) continue;
 
     const id = `mm-${nodeIndex++}`;

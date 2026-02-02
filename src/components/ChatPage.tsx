@@ -287,11 +287,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       }
       
       // 🔒 创建 artifact 消息：只存储 URL 和元数据，绝对不存 base64
-      const mindmapJson =
-        response.structuredMindmap?.mindmapJson ||
-        (response.structuredMindmap?.mermaidCode
-          ? parseMermaidToMindmap(response.structuredMindmap?.mermaidCode)
-          : null);
+      const mindmapMermaid = response.structuredMindmap?.mermaidCode;
+      const mindmapJson = mindmapMermaid ? parseMermaidToMindmap(mindmapMermaid) : null;
 
       const artifactMessage: Message = {
         id: `msg-${Date.now()}-artifact`,

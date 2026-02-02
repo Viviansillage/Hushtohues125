@@ -3,14 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Resizable } from 're-resizable';
 import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
-import { MindmapEditor } from './MindmapEditor';
-import { MindmapJson } from '../lib/mindmap';
 
 export interface CanvasItem {
   id: string;
   title: string;
   images: string[];
-  mindmaps?: Array<{ json: MindmapJson; title?: string; summary?: string }>;
+  mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
   content: string;
   tags?: string[];
   isPublic?: boolean;
@@ -31,7 +29,6 @@ export interface DraggableItem {
   height: number | string;
   zIndex: number;
   meta?: { title?: string; summary?: string };
-  mindmap?: MindmapJson;
 }
 
 interface CanvasDetailProps {
@@ -195,14 +192,13 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       generatedItems.push({
         id: `mindmap-${index}`,
         type: 'mindmap',
-        content: '',
+        content: mindmap.mermaidCode,
         x: 60 + (positionIndex % 2 * 10),
         y: 160 + (positionIndex * 420),
         width: 420,
         height: 280,
         zIndex: positionIndex + 1,
-        meta: { title: mindmap.title, summary: mindmap.summary },
-        mindmap: mindmap.json
+        meta: { title: mindmap.title, summary: mindmap.summary }
       });
     });
 
@@ -756,27 +752,11 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                           {item.meta?.title || 'Mindmap'}
                         </h3>
                       </div>
-                      <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-hidden">
-                        {item.mindmap ? (
-                          <MindmapEditor
-                            value={item.mindmap}
-                            readOnly={isPreview || readOnly}
-                            height={200}
-                            onChange={(next) => {
-                              if (isPreview || readOnly) return;
-                              setItems((prev) =>
-                                prev.map((node) =>
-                                  node.id === item.id ? { ...node, mindmap: next } : node
-                                )
-                              );
-                            }}
-                          />
-                        ) : (
-                          <MermaidMindmap
-                            mermaidCode={item.content || 'mindmap\n  root((Empty))'}
-                            id={item.id}
-                          />
-                        )}
+                      <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
+                        <MermaidMindmap
+                          mermaidCode={item.content || 'mindmap\n  root((Empty))'}
+                          id={item.id}
+                        />
                       </div>
                       {item.meta?.summary && (
                         <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>

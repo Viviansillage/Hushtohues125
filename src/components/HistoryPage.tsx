@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { CanvasDetail } from './CanvasDetail';
 import { deleteHistoryItem } from '../lib/api';
 import { toast } from 'sonner';
-import { ensureMindmapJson } from '../lib/mindmap';
 
 export interface ChatHistory {
   id: string;
@@ -197,22 +196,21 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
 
       const mindmapArtifacts = artifacts
         .filter((artifact: any) => artifact.type === 'mindmap' || artifact.kind === 'mindmap')
-        .map((artifact: any) => {
-          const json = ensureMindmapJson(artifact);
-          if (!json) return null;
-          return {
-            json,
-            title:
-              artifact.data?.title ||
-              artifact.payload?.title ||
-              artifact.payload?.structuredMindmap?.title,
-            summary:
-              artifact.data?.summary ||
-              artifact.payload?.summary ||
-              artifact.payload?.structuredMindmap?.summary
-          };
-        })
-        .filter(Boolean);
+        .map((artifact: any) => ({
+          mermaidCode:
+            artifact.data?.mermaidCode ||
+            artifact.payload?.mermaidCode ||
+            artifact.payload?.structuredMindmap?.mermaidCode,
+          title:
+            artifact.data?.title ||
+            artifact.payload?.title ||
+            artifact.payload?.structuredMindmap?.title,
+          summary:
+            artifact.data?.summary ||
+            artifact.payload?.summary ||
+            artifact.payload?.structuredMindmap?.summary
+        }))
+        .filter((mindmap: any) => !!mindmap.mermaidCode);
 
       // Fallback: 如果 artifacts 为空，使用 previewImages
       const imagesToShow = allImages.length > 0 ? allImages : selectedChatDetail.previewImages;

@@ -7,7 +7,6 @@ import { getOrCreateChatSessionId, getChatMessagesKey, getOrCreateGuestId, reset
 import mermaid from 'mermaid';
 import { MindmapEditor } from './MindmapEditor';
 import { parseMermaidToMindmap } from '../lib/mindmap';
-import { buildExcalidrawSceneFromMindmap } from '../lib/excalidrawMindmap';
 import { useChatStore } from '../lib/chatStore';
 
 interface Message {
@@ -293,7 +292,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         (response.structuredMindmap?.mermaidCode
           ? parseMermaidToMindmap(response.structuredMindmap?.mermaidCode)
           : null);
-      const excalidraw = buildExcalidrawSceneFromMindmap(mindmapJson);
 
       const artifactMessage: Message = {
         id: `msg-${Date.now()}-artifact`,
@@ -307,8 +305,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                 mermaidCode: response.structuredMindmap?.mermaidCode,
                 title: response.structuredMindmap?.title,
                 summary: response.structuredMindmap?.summary,
-                mindmapJson,
-                excalidraw
+                mindmapJson
               }
             : kind === 'image' 
               ? {
@@ -407,12 +404,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
               data: {
                 ...artifact.data,
                 mindmapJson:
-                  artifact.data?.mindmapJson || parseMermaidToMindmap(artifact.data?.mermaidCode),
-                excalidraw:
-                  artifact.data?.excalidraw ||
-                  buildExcalidrawSceneFromMindmap(
-                    artifact.data?.mindmapJson || parseMermaidToMindmap(artifact.data?.mermaidCode)
-                  )
+                  artifact.data?.mindmapJson || parseMermaidToMindmap(artifact.data?.mermaidCode)
               }
             }
           : artifact;
@@ -683,11 +675,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                         const mindmapJson =
                           message.artifact.data.mindmapJson ||
                           parseMermaidToMindmap(message.artifact.data.mermaidCode);
-                        const mindmapScene =
-                          message.artifact.data.excalidraw ||
-                          buildExcalidrawSceneFromMindmap(mindmapJson);
-                        return mindmapScene ? (
-                          <MindmapEditor value={mindmapScene} readOnly height={260} />
+                        return mindmapJson ? (
+                          <MindmapEditor value={mindmapJson} readOnly height={260} />
                         ) : (
                           <MermaidMindmap 
                             mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
@@ -717,8 +706,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                             const mindmapData = message.artifact?.data || {};
                             const mindmapJson =
                               mindmapData.mindmapJson || parseMermaidToMindmap(mindmapData.mermaidCode);
-                            const excalidraw =
-                              mindmapData.excalidraw || buildExcalidrawSceneFromMindmap(mindmapJson);
 
                             const response = await fetch('/api/archive?action=save', {
                               method: 'POST',
@@ -730,7 +717,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                                 sessionId: conversationId,
                                 artifact: {
                                   type: 'mindmap',
-                                  data: { ...mindmapData, mindmapJson, excalidraw }
+                                  data: { ...mindmapData, mindmapJson }
                                 }
                               })
                             });

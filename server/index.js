@@ -36,10 +36,28 @@ const buildMindmapStructured = (seedText) => {
   const title = seedText ? seedText.split(' ').slice(0, 4).join(' ') : 'Mindmap';
   const safeTitle = title || 'Mindmap';
   const mermaidCode = `mindmap\n  root((${safeTitle}))\n    Key point\n      Detail A\n      Detail B\n    Insight\n      Next step`;
+  const mindmapJson = {
+    nodes: [
+      { id: 'mm-0', position: { x: 0, y: 0 }, data: { label: safeTitle } },
+      { id: 'mm-1', position: { x: 240, y: 0 }, data: { label: 'Key point' } },
+      { id: 'mm-2', position: { x: 480, y: 0 }, data: { label: 'Detail A' } },
+      { id: 'mm-3', position: { x: 480, y: 120 }, data: { label: 'Detail B' } },
+      { id: 'mm-4', position: { x: 240, y: 240 }, data: { label: 'Insight' } },
+      { id: 'mm-5', position: { x: 480, y: 240 }, data: { label: 'Next step' } }
+    ],
+    edges: [
+      { id: 'e-0-1', source: 'mm-0', target: 'mm-1' },
+      { id: 'e-1-2', source: 'mm-1', target: 'mm-2' },
+      { id: 'e-1-3', source: 'mm-1', target: 'mm-3' },
+      { id: 'e-0-4', source: 'mm-0', target: 'mm-4' },
+      { id: 'e-4-5', source: 'mm-4', target: 'mm-5' }
+    ]
+  };
   return {
     mermaidCode,
     title: safeTitle,
-    summary: 'Local preview mindmap'
+    summary: 'Local preview mindmap',
+    mindmapJson
   };
 };
 

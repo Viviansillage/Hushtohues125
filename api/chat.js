@@ -93,27 +93,143 @@ const SYSTEM_PROMPT = `You are Hush to Hues AI assistant. Transform chaotic idea
   }
 }`;
 
-const MINDMAP_PROMPT = `Analyze the conversation and create a mindmap in Mermaid format.
+const MINDMAP_PROMPT = `Analyze the conversation and create a mindmap as a JSON tree.
 
 **OUTPUT STRICT JSON ONLY**:
 {
   "title": "<topic title>",
   "summary": "<brief summary of the topic>",
-  "mermaidCode": "mindmap\\n  root((Main Topic))\\n    Branch 1\\n      Detail 1\\n      Detail 2\\n    Branch 2\\n      Detail 3"
+  "mindmap": {
+    "label": "<main topic>",
+    "children": [
+      {
+        "label": "<branch>",
+        "children": [
+          { "label": "<detail>" },
+          { "label": "<detail>" }
+        ]
+      }
+    ]
+  }
 }
 
-Example mermaid mindmap syntax:
-mindmap
-  root((Central Idea))
-    Branch A
-      Sub A1
-      Sub A2
-    Branch B
-      Sub B1
-        Detail B1a
-    Branch C
+Rules:
+- Keep labels short (1–6 words).
+- Use 2–5 branches, each with 1–4 children when possible.
+- Return only valid JSON, no markdown.`;
 
-Generate proper Mermaid mindmap code based on the conversation.`;
+const buildMindmapJsonFromTree = (tree) => {
+  if (!tree || !tree.label) return { nodes: [], edges: [] };
+  const nodes = [];
+  const edges = [];
+  let index = 0;
+  let yIndex = 0;
+
+  const walk = (node, depth, parentId) => {
+    const id = `mm-${index++}`;
+    nodes.push({
+      id,
+      position: { x: depth * 240, y: yIndex * 120 },
+      data: { label: node.label || 'Node' }
+    });
+    yIndex += 1;
+
+    if (parentId) {
+      edges.push({
+        id: `e-${parentId}-${id}`,
+        source: parentId,
+        target: id
+      });
+    }
+
+    const children = Array.isArray(node.children) ? node.children : [];
+    children.forEach((child) => walk(child, depth + 1, id));
+  };
+
+  walk(tree, 0, null);
+  return { nodes, edges };
+};
+
+const parseMermaidToMindmapJson = (mermaidCode) => {
+  if (!mermaidCode) return { nodes: [], edges: [] };
+  const cleaned = mermaidCode
+    .replace(/```mermaid/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  const lines = cleaned
+    .split('\n')
+    .map((line) => line.replace(/\t/g, '  '))
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) return { nodes: [], edges: [] };
+
+  if (lines[0].trim().toLowerCase().startsWith('mindmap')) {
+    lines.shift();
+  }
+
+  const nodes = [];
+  const edges = [];
+  const stack = [];
+  let nodeIndex = 0;
+
+  const normalizeLabel = (label) => {
+    const cleanedLabel = label.replace(/^[*-]\s+/, '').replace(/:::.*/, '').trim();
+    const rootMatch =
+      cleanedLabel.match(/^root\s*\(\((.*)\)\)$/i) ||
+      cleanedLabel.match(/^root\s*\[(.*)\]$/i) ||
+      cleanedLabel.match(/^root\s*\((.*)\)$/i);
+    if (rootMatch && rootMatch[1]) return rootMatch[1].trim();
+    return cleanedLabel;
+  };
+
+  for (const line of lines) {
+    const match = line.match(/^(\s*)(.*)$/);
+    if (!match) continue;
+    const indent = match[1].length;
+    const depth = Math.floor(indent / 2);
+    const label = normalizeLabel(match[2]);
+    if (!label) continue;
+
+    const id = `mm-${nodeIndex++}`;
+    nodes.push({
+      id,
+      position: { x: depth * 240, y: nodes.length * 120 },
+      data: { label }
+    });
+
+    while (stack.length > 0 && stack[stack.length - 1].depth >= depth) {
+      stack.pop();
+    }
+
+    const parent = stack[stack.length - 1];
+    if (parent) {
+      edges.push({
+        id: `e-${parent.id}-${id}`,
+        source: parent.id,
+        target: id
+      });
+    }
+
+    stack.push({ depth, id });
+  }
+
+  return { nodes, edges };
+};
+
+const buildTreeFromLegacy = (mindmapData) => {
+  if (!mindmapData) return null;
+  if (mindmapData.mindmap?.label) return mindmapData.mindmap;
+  if (mindmapData.root && Array.isArray(mindmapData.branches)) {
+    return {
+      label: mindmapData.root,
+      children: mindmapData.branches.map((branch) => ({
+        label: branch.label,
+        children: (branch.children || []).map((child) => ({ label: child }))
+      }))
+    };
+  }
+  return null;
+};
 
 const IMAGE_PROMPT = `Based on the ENTIRE conversation history below, generate a detailed image description and title that captures the essence, theme, or key concepts discussed.
 
@@ -1070,6 +1186,17 @@ export default async function handler(req, res) {
           
           const geminiResponse = await callGemini([], conversationText, MINDMAP_PROMPT);
           const mindmapData = safeParseGeminiJson(geminiResponse, 'Mindmap');
+          const tree = buildTreeFromLegacy(mindmapData) || mindmapData.mindmap;
+          const mindmapJson = tree
+            ? buildMindmapJsonFromTree(tree)
+            : (() => {
+                const parsed = parseMermaidToMindmapJson(mindmapData.mermaidCode);
+                if (parsed.nodes && parsed.nodes.length > 0) return parsed;
+                return buildMindmapJsonFromTree({
+                  label: mindmapData.title || 'Mindmap',
+                  children: []
+                });
+              })();
           
           model = 'gemini-2.0-flash-exp';
 
@@ -1083,7 +1210,7 @@ export default async function handler(req, res) {
             metadata: {
               title: mindmapData.title,
               summary: mindmapData.summary,
-              mermaidCode: mindmapData.mermaidCode,
+              mindmapJson,
               structuredMindmap: mindmapData
             }
           });
@@ -1095,8 +1222,8 @@ export default async function handler(req, res) {
             createdAt: new Date().toISOString(),
             summary: mindmapData.summary,
             payload: {
-              mermaidCode: mindmapData.mermaidCode,
               title: mindmapData.title,
+              mindmapJson,
               structuredMindmap: mindmapData
             },
             provider,
@@ -1328,9 +1455,9 @@ export default async function handler(req, res) {
         // 根据kind添加特定数据
         if (kind === 'mindmap' && artifactResult) {
           response.structuredMindmap = {
-            mermaidCode: artifactResult.payload.mermaidCode || 'mindmap\n  root((No data))',
             title: artifactResult.payload.title,
             summary: artifactResult.summary,
+            mindmapJson: artifactResult.payload.mindmapJson,
             provider: artifactResult.provider,
             model: artifactResult.model
           };

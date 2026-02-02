@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
-import '@excalidraw/excalidraw/index.css';
 import { MindmapJson } from '../lib/mindmap';
 import { buildExcalidrawSceneFromMindmap, ExcalidrawScene, isExcalidrawScene } from '../lib/excalidrawMindmap';
 

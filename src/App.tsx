@@ -311,7 +311,13 @@ export default function App() {
 
           <nav className="flex-1 space-y-3">
             <button
-              onClick={() => setCurrentPage('chat')}
+              onClick={() => {
+                // 如果有保存的当前会话，先恢复再切换页面
+                if (hasCurrentSession()) {
+                  restoreCurrentSession();
+                }
+                setCurrentPage('chat');
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'chat' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
@@ -483,12 +489,6 @@ export default function App() {
           {currentPage === 'chat-history' && (
             <ChatHistoryPage
               sessions={chatSessions}
-              hasCurrentSession={hasCurrentSession()}
-              onReturnToCurrent={() => {
-                if (restoreCurrentSession()) {
-                  setCurrentPage('chat');
-                }
-              }}
               onSelectSession={async (sessionId) => {
                 try {
                   console.log('[App] Loading session:', sessionId);

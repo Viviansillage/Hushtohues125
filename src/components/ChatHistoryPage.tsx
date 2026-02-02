@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { MessageSquare, Calendar, Trash2, ArrowLeft } from 'lucide-react';
+import { MessageSquare, Calendar, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export interface ChatSession {
@@ -16,16 +16,12 @@ interface ChatHistoryPageProps {
   sessions: ChatSession[];
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
-  onReturnToCurrent?: () => void;
-  hasCurrentSession?: boolean;
 }
 
 export function ChatHistoryPage({ 
   sessions = [], 
   onSelectSession,
-  onDeleteSession,
-  onReturnToCurrent,
-  hasCurrentSession = false
+  onDeleteSession
 }: ChatHistoryPageProps) {
   const [sortedSessions, setSortedSessions] = useState<ChatSession[]>([]);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -81,19 +77,6 @@ export function ChatHistoryPage({
 
   return (
     <div className="h-screen flex flex-col max-w-6xl mx-auto px-8 py-6">
-      {/* Return to Current Chat Button */}
-      {hasCurrentSession && onReturnToCurrent && (
-        <div className="mb-6">
-          <button
-            onClick={onReturnToCurrent}
-            className="flex items-center gap-2 px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-white text-[#1a1a1a] hover:bg-[#f0ece1] transition-colors hand-drawn-border"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="font-bold">Return to Current Chat</span>
-          </button>
-        </div>
-      )}
-
       {/* Sessions List */}
       <div className="flex-1 overflow-y-auto">
         {sortedSessions.length === 0 ? (

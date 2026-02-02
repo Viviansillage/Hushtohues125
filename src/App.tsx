@@ -7,6 +7,7 @@ import { CommunityDetailPage } from './components/CommunityDetailPage';
 import { ProfilePage } from './components/ProfilePage';
 import { motion, AnimatePresence } from 'motion/react';
 import { LandingPage } from './components/LandingPage';
+import { useChatStore } from './lib/chatStore';
 import {
   ApiCommunityPost,
   ApiHistoryItem,
@@ -41,6 +42,8 @@ export default function App() {
   const [viewingCommunity, setViewingCommunity] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
+
+  const { loadSession } = useChatStore();
 
   const [history, setHistory] = useState<ChatHistory[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -478,6 +481,8 @@ export default function App() {
               sessions={chatSessions}
               onSelectSession={async (sessionId) => {
                 try {
+                  console.log('[App] Loading session:', sessionId);
+                  
                   // Load messages from the selected session
                   const response = await fetch(`/api/chat?action=load&sessionId=${sessionId}`, {
                     headers: {
@@ -493,11 +498,14 @@ export default function App() {
                     timestamp: new Date(msg.timestamp)
                   }));
                   
-                  // Store the session info for ChatPage to load
-                  sessionStorage.setItem('loadSessionId', sessionId);
-                  sessionStorage.setItem('loadSessionMessages', JSON.stringify(loadedMessages));
+                  console.log('[App] Loaded', loadedMessages.length, 'messages, calling loadSession');
                   
-                  // Switch to chat page
+                  // Directly load the session into chat store
+                  loadSession(sessionId, loadedMessages);
+                  
+                  console.log('[App] Session loaded, switching to chat page');
+                  
+                  // Switch to chat page - messages should already be loaded
                   setCurrentPage('chat');
                 } catch (error) {
                   console.error('Failed to load session:', error);

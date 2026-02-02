@@ -114,41 +114,10 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [isSavingAll, setIsSavingAll] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const hasLoadedSession = useRef(false);
-
-  // ✅ 检查是否有从history页面加载的session
-  useEffect(() => {
-    const loadSessionId = sessionStorage.getItem('loadSessionId');
-    const loadSessionMessages = sessionStorage.getItem('loadSessionMessages');
-    
-    if (loadSessionId && loadSessionMessages && !hasLoadedSession.current) {
-      try {
-        const messages = JSON.parse(loadSessionMessages);
-        console.log('[ChatPage] 📂 Loading session from history:', loadSessionId, 'messages:', messages.length);
-        loadSession(loadSessionId, messages);
-        hasLoadedSession.current = true;
-        
-        // 清除sessionStorage
-        sessionStorage.removeItem('loadSessionId');
-        sessionStorage.removeItem('loadSessionMessages');
-        
-        setIsLoadingHistory(false);
-      } catch (error) {
-        console.error('[ChatPage] Failed to load session from history:', error);
-        setIsLoadingHistory(false);
-      }
-    }
-  }, [loadSession]);
 
   // ✅ 刷新时从数据库恢复历史消息
   useEffect(() => {
     const loadHistoryMessages = async () => {
-      // 如果已经从history页面加载了session，跳过
-      if (hasLoadedSession.current) {
-        console.log('[ChatPage] Skipping DB load - session loaded from history');
-        return;
-      }
-      
       // 只在刷新后（messages 为空）加载
       if (messages.length > 0) {
         setIsLoadingHistory(false);

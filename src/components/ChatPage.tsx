@@ -24,8 +24,6 @@ interface Message {
 
 interface ChatPageProps {
   onHistorySync?: () => void;
-  onReturnToCurrent?: () => void;
-  hasCurrentSession?: boolean;
 }
 
 // Add type definition for Web Speech API
@@ -100,7 +98,7 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
   return <div ref={mermaidRef} className="mermaid-container"></div>;
 };
 
-export function ChatPage({ onHistorySync, onReturnToCurrent, hasCurrentSession }: ChatPageProps) {
+export function ChatPage({ onHistorySync }: ChatPageProps) {
   // ✅ 使用全局 store，确保切页不丢
   const { conversationId, messages, appendMessage, setMessages, resetChat, loadSession } = useChatStore();
   
@@ -618,21 +616,6 @@ export function ChatPage({ onHistorySync, onReturnToCurrent, hasCurrentSession }
           </filter>
         </defs>
       </svg>
-
-      {/* Return to Current Chat Button - 当正在查看历史会话时显示 */}
-      {hasCurrentSession && onReturnToCurrent && (
-        <div className="px-8 pt-6 pb-2">
-          <button
-            onClick={onReturnToCurrent}
-            className="flex items-center gap-2 px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-white text-[#1a1a1a] hover:bg-[#f0ece1] transition-colors hand-drawn-border"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            <span className="font-bold">Return to Current Chat</span>
-          </button>
-        </div>
-      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-8 py-6 relative">

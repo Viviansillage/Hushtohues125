@@ -509,7 +509,13 @@ async function callGemini(messages, userText, customPrompt = null) {
     });
   }
 
-  // 注意：不再额外添加 userText，因为它已经包含在 messages 数组的最后一条了
+  // 若未传入 messages，fallback 使用 userText 作为输入
+  if (contents.length === 0 && userText) {
+    contents.push({
+      role: 'user',
+      parts: [{ text: userText }]
+    });
+  }
 
   console.log('[callGemini] 📦 Request contents length:', contents.length);
 
@@ -1068,7 +1074,7 @@ export default async function handler(req, res) {
           
           console.log(`[${requestId}] Generating mindmap from ${messages.length} messages...`);
           
-          const geminiResponse = await callGemini([], conversationText, MINDMAP_PROMPT);
+          const geminiResponse = await callGemini(messages, conversationText, MINDMAP_PROMPT);
           const mindmapData = safeParseGeminiJson(geminiResponse, 'Mindmap');
           
           model = 'gemini-2.0-flash-exp';

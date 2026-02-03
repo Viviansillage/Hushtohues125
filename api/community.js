@@ -729,6 +729,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       mindmaps,
       messages: messages || [],
       content: history.content_json?.content || '',
+      contentJson: history.content_json || null,  // ✅ Pass complete contentJson with layout
       tags: history.tags || communityPost.tags || [],
       isPublic: true,
       readOnly: true,  // ✅ 强制只读

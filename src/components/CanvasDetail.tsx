@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Resizable } from 're-resizable';
 import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
+import { updateHistoryItem } from '../lib/api';
 
 export interface CanvasItem {
   id: string;
@@ -16,6 +17,11 @@ export interface CanvasItem {
   stats?: {
     likes: number;
     comments: number;
+  };
+  contentJson?: {
+    title?: string;
+    items?: DraggableItem[];
+    timestamp?: string;
   };
 }
 
@@ -181,12 +187,21 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Initialize items
   const [items, setItems] = useState<DraggableItem[]>(() => {
-    // Try to load saved state from localStorage
+    // Priority 1: Check if contentJson has saved items (from database, used in community/readOnly)
+    if (item.contentJson?.items && Array.isArray(item.contentJson.items) && item.contentJson.items.length > 0) {
+      console.log('[CanvasDetail] Loading from contentJson.items:', item.contentJson.items.length);
+      return item.contentJson.items;
+    }
+    
+    // Priority 2: Try to load saved state from localStorage (for archive mode)
     const savedState = localStorage.getItem(`canvas-${item.id}`);
     if (savedState && !readOnly) {
       try {
         const parsed = JSON.parse(savedState);
-        return parsed.items || [];
+        if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
+          console.log('[CanvasDetail] Loading from localStorage:', parsed.items.length);
+          return parsed.items;
+        }
       } catch (e) {
         console.error('Failed to parse saved state:', e);
       }
@@ -313,16 +328,33 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     setNewComment('');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const dataToSave = {
       title,
       items,
       timestamp: new Date().toISOString()
     };
+    
+    // Save to localStorage
     localStorage.setItem(`canvas-${item.id}`, JSON.stringify(dataToSave));
     savedStateRef.current = JSON.stringify({ title, items });
     setHasUnsavedChanges(false);
-    toast.success('Canvas saved!', { className: 'handwritten font-bold' });
+    
+    // Also update the database if not in readOnly mode
+    if (!readOnly) {
+      try {
+        await updateHistoryItem(item.id, {
+          title,
+          contentJson: dataToSave
+        });
+        toast.success('Canvas saved!', { className: 'handwritten font-bold' });
+      } catch (error) {
+        console.error('Failed to save to database:', error);
+        toast.warning('Saved locally, but failed to sync to server', { className: 'handwritten font-bold' });
+      }
+    } else {
+      toast.success('Canvas saved locally!', { className: 'handwritten font-bold' });
+    }
   };
 
   const handleClose = () => {
@@ -375,6 +407,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   };
   
   return (
+    <>
     <div 
       className="fixed inset-0 bg-[#f0ece1] z-50 overflow-hidden flex flex-col font-sans"
       style={{
@@ -682,40 +715,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                             <span className="handwritten font-bold text-sm">Share Link</span>
                          </div>
                       </button>
-
-                      {/* Publish */}
-                      <button
-                         onClick={() => {
-                            toast.success('Published to Community!', { className: 'handwritten font-bold' });
-                            setIsShareMenuOpen(false);
-                         }}
-                         className="relative group/option flex items-center gap-3 p-3 transition-all hover:scale-105"
-                      >
-                         <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 200 60" preserveAspectRatio="none">
-                            <path 
-                                d="M 100 5 C 150 5 190 15 192 30 C 194 45 150 56 100 55 C 50 54 6 45 8 30 C 10 15 50 5 100 5 Z"
-                                fill="none" 
-                                stroke="#1a1a1a" 
-                                strokeWidth="2" 
-                                strokeLinecap="round"
-                                style={{ filter: 'url(#hand-drawn-border)' }}
-                            />
-                            {/* Another accent stroke */}
-                            <path 
-                                d="M 100 55 C 60 55 10 48 10 35"
-                                fill="none" 
-                                stroke="#1a1a1a" 
-                                strokeWidth="1.5" 
-                                opacity="0.5"
-                                style={{ filter: 'url(#hand-drawn-border)' }}
-                            />
-                         </svg>
-                         
-                         <div className="relative z-10 flex items-center gap-3 w-full px-4">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            <span className="handwritten font-bold text-sm">Publish</span>
-                         </div>
-                      </button>
                    </div>
                 </div>
              </motion.div>
@@ -893,14 +892,16 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         )}
         </div>
       </div>
-      {/* Exit Confirmation Dialog */}
+    </div>
+
+      {/* Exit Confirmation Dialog - Moved outside for proper z-index layering */}
       <AnimatePresence>
         {showExitConfirm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center"
+            className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center"
             onClick={() => setShowExitConfirm(false)}
           >
             <motion.div
@@ -955,6 +956,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>    </div>
+      </AnimatePresence>
+    </>
   );
 };

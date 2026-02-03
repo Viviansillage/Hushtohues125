@@ -42,6 +42,7 @@ export type ApiHistoryItem = {
   previewImages: string[];
   isPublic: boolean;
   tags: string[];
+  contentJson?: any;
 };
 
 export type ApiCommunityPost = {

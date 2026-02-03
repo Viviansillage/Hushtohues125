@@ -125,6 +125,23 @@ export default function App() {
     }
   };
 
+  const refreshCommunityMeta = async () => {
+    try {
+      console.log('[App] Fetching community meta');
+      const communityMeta = await getCommunityMeta();
+      console.log('[App] Community meta fetched:', {
+        followed: communityMeta.followed.length,
+        recommended: communityMeta.recommended.length
+      });
+      setFollowedCommunities(communityMeta.followed);
+      setRecommendedCommunities(communityMeta.recommended);
+      setLikedPosts(communityMeta.user.likes.filter((id) => !id.includes(':')));
+      setBookmarkedPosts(communityMeta.user.bookmarks);
+    } catch (error) {
+      console.error('[App] Failed to refresh community meta', error);
+    }
+  };
+
   const handleUpdateHistory = async (id: string, updates: Partial<ChatHistory>) => {
     setHistory((prev) =>
       prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
@@ -182,8 +199,11 @@ export default function App() {
       const result = await followCommunity(community.name);
       setFollowedCommunities(result.followed);
       setRecommendedCommunities(result.recommended);
+      console.log('[App] Community followed successfully:', community.name);
     } catch (error) {
       console.error('Failed to follow community', error);
+      // 失败时也尝试刷新，确保 UI 与 DB 一致
+      await refreshCommunityMeta();
     }
   };
 
@@ -192,8 +212,11 @@ export default function App() {
       const result = await unfollowCommunity(name);
       setFollowedCommunities(result.followed);
       setRecommendedCommunities(result.recommended);
+      console.log('[App] Community unfollowed successfully:', name);
     } catch (error) {
       console.error('Failed to unfollow community', error);
+      // 失败时也尝试刷新，确保 UI 与 DB 一致
+      await refreshCommunityMeta();
     }
   };
 
@@ -400,7 +423,11 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setCurrentPage('community')}
+              onClick={() => {
+                setCurrentPage('community');
+                // 切换到 Community 时刷新数据
+                refreshCommunityMeta();
+              }}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'community' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
               }`}
@@ -516,7 +543,14 @@ export default function App() {
             />
           )}
           {currentPage === 'community-detail' && viewingCommunity && (
-            <CommunityDetailPage communityName={viewingCommunity} onBack={() => setCurrentPage('community')} />
+            <CommunityDetailPage 
+              communityName={viewingCommunity} 
+              onBack={() => {
+                setCurrentPage('community');
+                // 返回时刷新 Following 列表
+                refreshCommunityMeta();
+              }} 
+            />
           )}
           {currentPage === 'profile' && profile && (
             <ProfilePage profile={profile} onUpdateProfile={handleProfileUpdate} />

@@ -210,8 +210,8 @@ export async function getCommunityPosts() {
   }));
 }
 
-export async function getCommunityMeta() {
-  const profileId = await getOrCreateDefaultProfile();
+export async function getCommunityMeta(req = null) {
+  const actor = req ? getActor(req) : { type: 'guest', id: 'default' };
   
   // 辅助函数：确保 tag 有完整结构
   const ensureTagStructure = (tag, name) => {
@@ -237,22 +237,26 @@ export async function getCommunityMeta() {
     
     if (tagsError) throw tagsError;
     
-    // 查询用户关注的社区
+    // 查询用户关注的社区（支持 guest）
     const { data: followedData, error: followedError } = await supabase
       .from('user_followed_communities')
       .select('community_tags(*)')
-      .eq('profile_id', profileId);
+      .eq('actor_type', actor.type)
+      .eq('actor_id', actor.id);
     
     if (followedError) throw followedError;
     
-    // 查询用户点赞和收藏
+    // 查询用户点赞（支持 guest）
     const { data: likesData, error: likesError } = await supabase
       .from('user_likes')
       .select('target_id')
-      .eq('profile_id', profileId);
+      .eq('actor_type', actor.type)
+      .eq('actor_id', actor.id);
     
     if (likesError) throw likesError;
     
+    // 查询用户收藏（仍使用 profile_id，guest 暂不支持）
+    const profileId = await getOrCreateDefaultProfile();
     const { data: bookmarksData, error: bookmarksError } = await supabase
       .from('user_bookmarks')
       .select('post_id')
@@ -284,7 +288,9 @@ export async function getCommunityMeta() {
       recommended,
       user: {
         likes: (likesData || []).map(l => l.target_id),
-        bookmarks: (bookmarksData || []).map(b => b.post_id)
+        bookmarks: (bookmarksData || []).map(b => b.post_id),
+        followedCommunities: followedNames,
+        joinedCommunities: followedNames  // 同义词
       }
     };
   } catch (error) {
@@ -295,9 +301,122 @@ export async function getCommunityMeta() {
       recommended: [],
       user: {
         likes: [],
-        bookmarks: []
+        bookmarks: [],
+        followedCommunities: [],
+        joinedCommunities: []
       }
     };
+  }
+}
+
+/**
+ * Follow a community
+ * @param {string} communityName - Community name to follow
+ * @param {object} actor - User/guest actor { type, id }
+ */
+export async function followCommunity(communityName, actor) {
+  try {
+    // 1. 查找或创建 community_tag
+    let { data: tag, error: tagError } = await supabase
+      .from('community_tags')
+      .select('id, name, member_count')
+      .eq('name', communityName)
+      .maybeSingle();
+    
+    if (tagError && tagError.code !== 'PGRST116') throw tagError;
+    
+    if (!tag) {
+      // 创建新 tag
+      const { data: newTag, error: createError } = await supabase
+        .from('community_tags')
+        .insert({ name: communityName, member_count: 1 })
+        .select('id, name, member_count')
+        .single();
+      
+      if (createError) throw createError;
+      tag = newTag;
+    }
+    
+    // 2. 检查是否已关注（幂等性）
+    const { data: existing, error: checkError } = await supabase
+      .from('user_followed_communities')
+      .select('id')
+      .eq('actor_type', actor.type)
+      .eq('actor_id', actor.id)
+      .eq('community_tag_id', tag.id)
+      .maybeSingle();
+    
+    if (checkError && checkError.code !== 'PGRST116') throw checkError;
+    
+    if (!existing) {
+      // 3. 插入关注记录
+      const { error: insertError } = await supabase
+        .from('user_followed_communities')
+        .insert({
+          actor_type: actor.type,
+          actor_id: actor.id,
+          community_tag_id: tag.id,
+          profile_id: actor.type === 'user' ? actor.id : null,
+          created_at: new Date().toISOString()
+        });
+      
+      if (insertError && insertError.code !== '23505') {
+        throw insertError;
+      }
+      
+      // 4. 更新 member_count
+      await supabase
+        .from('community_tags')
+        .update({ member_count: (tag.member_count || 0) + 1 })
+        .eq('id', tag.id);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('followCommunity error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Unfollow a community
+ * @param {string} communityName - Community name to unfollow
+ * @param {object} actor - User/guest actor { type, id }
+ */
+export async function unfollowCommunity(communityName, actor) {
+  try {
+    // 1. 查找 community_tag
+    const { data: tag, error: tagError } = await supabase
+      .from('community_tags')
+      .select('id, member_count')
+      .eq('name', communityName)
+      .maybeSingle();
+    
+    if (tagError && tagError.code !== 'PGRST116') throw tagError;
+    if (!tag) return false;  // Tag 不存在，已经是未关注状态
+    
+    // 2. 删除关注记录
+    const { error: deleteError } = await supabase
+      .from('user_followed_communities')
+      .delete()
+      .eq('actor_type', actor.type)
+      .eq('actor_id', actor.id)
+      .eq('community_tag_id', tag.id);
+    
+    if (deleteError) throw deleteError;
+    
+    // 3. 更新 member_count
+    if (tag.member_count > 0) {
+      await supabase
+        .from('community_tags')
+        .update({ member_count: tag.member_count - 1 })
+        .eq('id', tag.id);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('unfollowCommunity error:', error);
+    throw error;
   }
 }
 

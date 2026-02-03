@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getCommunityDetail, toggleCommunityDetailLike, toggleCommunityJoin } from '../lib/api';
+import { getCommunityDetail, toggleCommunityDetailLike, followCommunity, unfollowCommunity } from '../lib/api';
 
 interface Post {
   id: string;
@@ -24,13 +24,23 @@ export function CommunityDetailPage({ communityName, onBack }: CommunityDetailPr
   const [memberCount, setMemberCount] = useState(0);
   const [onlineCount, setOnlineCount] = useState(0);
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
+  const [isJoining, setIsJoining] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     const load = async () => {
       try {
+        setIsLoading(true);
+        setError(null);
+        console.log('[CommunityDetail] Loading detail for:', communityName);
         const response = await getCommunityDetail(communityName);
         if (!isMounted) return;
+        console.log('[CommunityDetail] Loaded:', { 
+          joined: response.joined, 
+          members: response.detail.members 
+        });
         setIsJoined(response.joined);
         setMemberCount(response.detail.members);
         setOnlineCount(response.detail.online);
@@ -41,7 +51,14 @@ export function CommunityDetailPage({ communityName, onBack }: CommunityDetailPr
           }))
         );
       } catch (error) {
-        console.error('Failed to load community detail', error);
+        console.error('[CommunityDetail] Failed to load:', error);
+        if (isMounted) {
+          setError(error instanceof Error ? error.message : 'Failed to load community details');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -54,11 +71,46 @@ export function CommunityDetailPage({ communityName, onBack }: CommunityDetailPr
   const likedSet = likedPosts;
 
   const handleJoinToggle = async () => {
+    if (isJoining) return; // 防止重复点击
+    
+    const previousState = isJoined;
+    setIsJoining(true);
+    
     try {
-      const result = await toggleCommunityJoin(communityName);
-      setIsJoined(result.joined);
+      // Optimistic update
+      setIsJoined(!isJoined);
+      
+      if (isJoined) {
+        // 当前已关注，执行取消关注
+        const result = await unfollowCommunity(communityName);
+        console.log('[CommunityDetail] Unfollowed successfully:', { 
+          community: communityName,
+          followed: result.followed.length
+        });
+      } else {
+        // 当前未关注，执行关注
+        const result = await followCommunity(communityName);
+        console.log('[CommunityDetail] Followed successfully:', { 
+          community: communityName,
+          followed: result.followed.length
+        });
+      }
+      
+      // 重新加载详情页以获取最新状态
+      const response = await getCommunityDetail(communityName);
+      setIsJoined(response.joined);
+      setMemberCount(response.detail.members);
+      
     } catch (error) {
-      console.error('Failed to toggle join', error);
+      console.error('[CommunityDetail] Failed to toggle follow:', error);
+      // Rollback on error
+      setIsJoined(previousState);
+      
+      // 显示错误信息
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update follow status';
+      alert(`Error: ${errorMessage}. Please try again.`);
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -117,6 +169,32 @@ export function CommunityDetailPage({ communityName, onBack }: CommunityDetailPr
           Back to Communities
         </button>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-12 hand-drawn-border wireframe-shadow text-center">
+            <div className="animate-pulse">
+              <div className="text-xl font-bold handwritten text-[#6d6d6d]">Loading community...</div>
+            </div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !isLoading && (
+          <div className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-8 mb-8 hand-drawn-border wireframe-shadow">
+            <div className="text-red-600 font-bold handwritten text-lg mb-2">Failed to load community</div>
+            <div className="text-[#6d6d6d] handwritten">{error}</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-6 py-2 bg-[#1a1a1a] text-[#faf8f3] font-bold handwritten border-[2px] border-[#1a1a1a] hand-drawn-border hover:opacity-80"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Content (only show when not loading and no error) */}
+        {!isLoading && !error && (
+          <>
         {/* Community Header */}
         <div className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-8 mb-8 hand-drawn-border wireframe-shadow relative overflow-hidden">
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -155,13 +233,14 @@ export function CommunityDetailPage({ communityName, onBack }: CommunityDetailPr
 
             <button
               onClick={handleJoinToggle}
+              disabled={isJoining || isLoading}
               className={`px-8 py-3 font-bold handwritten text-lg border-[2px] border-[#1a1a1a] transition-all hand-drawn-border hover:shadow-lg ${
                 isJoined
                   ? 'bg-[#e8e4d9] text-[#1a1a1a]'
                   : 'bg-[#1a1a1a] text-[#faf8f3] hover:-translate-y-1'
-              }`}
+              } ${(isJoining || isLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              {isJoined ? 'Joined ✓' : 'Join Community'}
+              {isJoining ? 'Loading...' : isJoined ? 'Unfollow' : 'Follow'}
             </button>
           </div>
 
@@ -322,6 +401,8 @@ export function CommunityDetailPage({ communityName, onBack }: CommunityDetailPr
             </div>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

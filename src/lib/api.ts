@@ -176,7 +176,7 @@ export const getCommunityDetail = (name: string) =>
       }>;
     };
     joined: boolean;
-  }>(`/api/community/${name}`);
+  }>(`/api/community?action=detail&community=${encodeURIComponent(name)}`);
 
 export const toggleCommunityJoin = (name: string) =>
   request<{ joined: boolean }>(`/api/community?action=join&community=${name}`, { method: 'POST' });

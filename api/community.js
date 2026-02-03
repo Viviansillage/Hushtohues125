@@ -37,18 +37,17 @@ export default async function handler(req, res) {
       return handlePublish(req, res);
     }
     
-    // ========== 路由 3: /api/community/[name] ==========
-    const nameMatch = pathname.match(/\/api\/community\/([^\/]+)$/);
-    if (nameMatch && nameMatch[1] && !['like', 'publish'].includes(nameMatch[1])) {
-      return handleCommunityDetail(req, res, nameMatch[1]);
-    }
-    
-    // ========== 路由 4: /api/community (主路由) ==========
+    // ========== 路由 3: /api/community (主路由，统一使用 query 参数) ==========
     const discover = url.searchParams.get('discover');
     const posts = url.searchParams.get('posts');
     const action = url.searchParams.get('action');
     const postId = url.searchParams.get('postId');
     const communityName = url.searchParams.get('community');
+    
+    // ========== GET: action=detail (社区详情) ==========
+    if (req.method === 'GET' && action === 'detail' && communityName) {
+      return handleCommunityDetail(req, res, communityName);
+    }
     
     if (req.method === 'POST') {
       const body = await parseBody(req);
@@ -56,17 +55,127 @@ export default async function handler(req, res) {
       // /api/community?action=follow
       if (action === 'follow') {
         const { name } = body;
-        // Mock: 返回更新后的元数据
-        const meta = await getCommunityMeta();
-        return res.status(200).json(meta);
+        const actor = getActor(req);
+        
+        if (!name) {
+          return res.status(400).json({ error: 'Community name is required' });
+        }
+        
+        try {
+          // 1. 查找或创建 community_tag
+          let { data: tag, error: tagError } = await supabase
+            .from('community_tags')
+            .select('id, member_count')
+            .eq('name', name)
+            .maybeSingle();
+          
+          if (tagError && tagError.code !== 'PGRST116') {
+            throw tagError;
+          }
+          
+          if (!tag) {
+            const { data: newTag, error: createError } = await supabase
+              .from('community_tags')
+              .insert({ name: name, member_count: 1 })
+              .select('id, member_count')
+              .single();
+            
+            if (createError) throw createError;
+            tag = newTag;
+          }
+          
+          // 2. Upsert 关注记录（幂等）
+          const { error: upsertError } = await supabase
+            .from('user_followed_communities')
+            .upsert(
+              {
+                actor_type: actor.type,
+                actor_id: actor.id,
+                community_tag_id: tag.id,
+                profile_id: actor.type === 'user' ? actor.id : null,
+                created_at: new Date().toISOString()
+              },
+              {
+                onConflict: 'actor_type,actor_id,community_tag_id',
+                ignoreDuplicates: true
+              }
+            );
+          
+          if (upsertError) throw upsertError;
+          
+          // 3. 更新 member_count（如果是新关注）
+          await supabase
+            .from('community_tags')
+            .update({ member_count: (tag.member_count || 0) + 1 })
+            .eq('id', tag.id);
+          
+          // 4. 返回最新数据
+          const meta = await getCommunityMeta(req);
+          return res.status(200).json(meta);
+        } catch (error) {
+          console.error('Follow community error:', error);
+          return res.status(500).json({ 
+            error: 'Failed to follow community',
+            details: error.message // 开发环境详细错误
+          });
+        }
       }
       
       // /api/community?action=unfollow
       if (action === 'unfollow') {
         const { name } = body;
-        // Mock: 返回更新后的元数据
-        const meta = await getCommunityMeta();
-        return res.status(200).json(meta);
+        const actor = getActor(req);
+        
+        if (!name) {
+          return res.status(400).json({ error: 'Community name is required' });
+        }
+        
+        try {
+          // 1. 查找 community_tag
+          const { data: tag, error: tagError } = await supabase
+            .from('community_tags')
+            .select('id, member_count')
+            .eq('name', name)
+            .maybeSingle();
+          
+          if (tagError && tagError.code !== 'PGRST116') {
+            throw tagError;
+          }
+          
+          if (!tag) {
+            // Tag 不存在，已经是未关注状态
+            const meta = await getCommunityMeta(req);
+            return res.status(200).json(meta);
+          }
+          
+          // 2. 删除关注记录
+          const { error: deleteError } = await supabase
+            .from('user_followed_communities')
+            .delete()
+            .eq('actor_type', actor.type)
+            .eq('actor_id', actor.id)
+            .eq('community_tag_id', tag.id);
+          
+          if (deleteError) throw deleteError;
+          
+          // 3. 更新 member_count
+          if (tag.member_count > 0) {
+            await supabase
+              .from('community_tags')
+              .update({ member_count: tag.member_count - 1 })
+              .eq('id', tag.id);
+          }
+          
+          // 4. 返回最新数据
+          const meta = await getCommunityMeta(req);
+          return res.status(200).json(meta);
+        } catch (error) {
+          console.error('Unfollow community error:', error);
+          return res.status(500).json({ 
+            error: 'Failed to unfollow community',
+            details: error.message
+          });
+        }
       }
       
       // /api/community?action=bookmark&postId=xxx
@@ -77,8 +186,81 @@ export default async function handler(req, res) {
       
       // /api/community?action=join&community=xxx
       if (action === 'join' && communityName) {
-        // Mock: 返回加入状态
-        return res.status(200).json({ joined: true });
+        const actor = getActor(req);
+        
+        try {
+          // 1. 查找或创建 community_tag
+          let { data: tag, error: tagError } = await supabase
+            .from('community_tags')
+            .select('id, member_count')
+            .eq('name', communityName)
+            .maybeSingle();
+          
+          if (tagError && tagError.code !== 'PGRST116') {
+            throw tagError;
+          }
+          
+          if (!tag) {
+            const { data: newTag, error: createError } = await supabase
+              .from('community_tags')
+              .insert({ name: communityName, member_count: 1 })
+              .select('id, member_count')
+              .single();
+            
+            if (createError) throw createError;
+            tag = newTag;
+          }
+          
+          // 2. 检查是否已 joined
+          const { data: existing, error: checkError } = await supabase
+            .from('user_followed_communities')
+            .select('id')
+            .eq('actor_type', actor.type)
+            .eq('actor_id', actor.id)
+            .eq('community_tag_id', tag.id)
+            .maybeSingle();
+          
+          if (checkError && checkError.code !== 'PGRST116') {
+            throw checkError;
+          }
+          
+          if (existing) {
+            return res.status(200).json({ joined: true, alreadyJoined: true });
+          }
+          
+          // 3. Upsert join 记录（幂等）
+          const { error: upsertError } = await supabase
+            .from('user_followed_communities')
+            .upsert(
+              {
+                actor_type: actor.type,
+                actor_id: actor.id,
+                community_tag_id: tag.id,
+                profile_id: actor.type === 'user' ? actor.id : null,
+                created_at: new Date().toISOString()
+              },
+              {
+                onConflict: 'actor_type,actor_id,community_tag_id',
+                ignoreDuplicates: true
+              }
+            );
+          
+          if (upsertError) throw upsertError;
+          
+          // 4. 更新 member_count
+          await supabase
+            .from('community_tags')
+            .update({ member_count: (tag.member_count || 0) + 1 })
+            .eq('id', tag.id);
+          
+          return res.status(200).json({ joined: true, alreadyJoined: false });
+        } catch (error) {
+          console.error('Join community error:', error);
+          return res.status(500).json({ 
+            error: 'Failed to join community',
+            details: error.message
+          });
+        }
       }
     }
     
@@ -136,7 +318,7 @@ export default async function handler(req, res) {
       }
       
       // 默认返回社区元数据
-      const meta = await getCommunityMeta();
+      const meta = await getCommunityMeta(req);
       return res.status(200).json(meta);
     }
 
@@ -397,17 +579,65 @@ async function handleCommunityDetail(req, res, name) {
       return res.status(400).json({ error: 'Community name required' });
     }
 
+    const actor = getActor(req);
+    console.log('[handleCommunityDetail] Request:', { 
+      name, 
+      actor: { type: actor.type, id: actor.id.slice(0, 8) + '...' }
+    });
+    
+    // 查询该 community 是否被当前用户关注
+    const { data: tag, error: tagError } = await supabase
+      .from('community_tags')
+      .select('id, name, member_count')
+      .eq('name', name)
+      .maybeSingle();
+    
+    if (tagError && tagError.code !== 'PGRST116') {
+      console.error('[handleCommunityDetail] Tag query error:', tagError);
+      throw tagError;
+    }
+    
+    let joined = false;
+    if (tag) {
+      const { data: existing, error: memberError } = await supabase
+        .from('user_followed_communities')
+        .select('id')
+        .eq('actor_type', actor.type)
+        .eq('actor_id', actor.id)
+        .eq('community_tag_id', tag.id)
+        .maybeSingle();
+      
+      if (memberError && memberError.code !== 'PGRST116') {
+        console.error('[handleCommunityDetail] Membership query error:', memberError);
+        throw memberError;
+      }
+      
+      joined = !!existing;
+      console.log('[handleCommunityDetail] Status:', {
+        tagId: tag.id,
+        tagName: tag.name,
+        memberCount: tag.member_count,
+        joined,
+        existingRecord: !!existing
+      });
+    } else {
+      console.log('[handleCommunityDetail] Community tag not found:', name);
+    }
+
     return res.status(200).json({
       name: name,
       detail: {
-        members: Math.floor(Math.random() * 5000) + 1000,
+        members: tag?.member_count || 0,
         online: Math.floor(Math.random() * 100) + 20,
         posts: []
       },
-      joined: false
+      joined
     });
   } catch (error) {
-    console.error('Community detail API error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('[handleCommunityDetail] Error:', error);
+    return res.status(500).json({ 
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }

@@ -64,7 +64,12 @@ export default async function handler(req, res) {
         .order('created_at', { ascending: true });
 
       const messageCount = sessionMessages?.length || 0;
-      const lastMessage = sessionMessages?.[sessionMessages.length - 1]?.content || 'Saved conversation';
+      
+      // ✅ 使用artifact的summary或title作为lastMessage的fallback
+      const artifactSummary = artifact.data?.summary || artifact.data?.title || '';
+      const lastMessage = sessionMessages?.[sessionMessages.length - 1]?.content 
+        || artifactSummary 
+        || `Saved ${artifact.type}`;
 
       // Step 3: 准备artifact数据（追加）
       const newArtifactEntry = {
@@ -139,10 +144,13 @@ export default async function handler(req, res) {
         // ✅ 不存在：创建新archive
         console.log('[Archive Save] Creating new archive for session:', sessionId);
 
-        // 生成title（从第一条用户消息）
+        // ✅ 生成title：优先使用artifact的title，其次使用第一条用户消息
+        const artifactTitle = artifact.data?.title || '';
         const userMessages = sessionMessages?.filter(m => m.sender === 'user') || [];
         const firstUserMsg = userMessages[0]?.content || '';
-        const title = firstUserMsg.substring(0, 50) || `Session ${new Date().toLocaleString()}`;
+        const title = artifactTitle.substring(0, 50) 
+          || firstUserMsg.substring(0, 50) 
+          || `Saved ${artifact.type} - ${new Date().toLocaleString()}`;
         
         // 提取图片预览
         const previewImages = artifact.type === 'image' && artifact.data?.imageUrl 

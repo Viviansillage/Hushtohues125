@@ -202,8 +202,24 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       try {
         const parsed = JSON.parse(savedState);
         if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
-          console.log('[CanvasDetail] ✅ Loading from localStorage:', parsed.items.length);
-          return parsed.items;
+          // ✅ 验证localStorage中的图片是否与当前传入的images匹配
+          const savedImageUrls = parsed.items
+            .filter((i: DraggableItem) => i.type === 'image')
+            .map((i: DraggableItem) => i.content)
+            .sort();
+          const currentImageUrls = (item.images || []).slice().sort();
+          
+          const imagesMatch = JSON.stringify(savedImageUrls) === JSON.stringify(currentImageUrls);
+          
+          if (imagesMatch) {
+            console.log('[CanvasDetail] ✅ Loading from localStorage:', parsed.items.length);
+            return parsed.items;
+          } else {
+            console.log('[CanvasDetail] ⚠️ localStorage images mismatch, regenerating layout', {
+              saved: savedImageUrls.length,
+              current: currentImageUrls.length
+            });
+          }
         }
       } catch (e) {
         console.error('Failed to parse saved state:', e);

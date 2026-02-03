@@ -180,6 +180,7 @@ export const getCommunityDetail = (postId: string) =>
       mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
       messages?: Array<{ sender: string; text: string; timestamp: string }>;
       content: string;
+      contentJson?: any;  // ✅ Add contentJson with layout info
       tags: string[];
       isPublic: boolean;
       readOnly: boolean;  // ✅ 只读标记

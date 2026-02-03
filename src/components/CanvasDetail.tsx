@@ -187,9 +187,12 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Initialize items
   const [items, setItems] = useState<DraggableItem[]>(() => {
+    console.log('[CanvasDetail] Initializing items, readOnly:', readOnly, 'item.id:', item.id);
+    console.log('[CanvasDetail] item.contentJson:', item.contentJson);
+    
     // Priority 1: Check if contentJson has saved items (from database, used in community/readOnly)
     if (item.contentJson?.items && Array.isArray(item.contentJson.items) && item.contentJson.items.length > 0) {
-      console.log('[CanvasDetail] Loading from contentJson.items:', item.contentJson.items.length);
+      console.log('[CanvasDetail] ✅ Loading from contentJson.items:', item.contentJson.items.length);
       return item.contentJson.items;
     }
     
@@ -199,7 +202,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       try {
         const parsed = JSON.parse(savedState);
         if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
-          console.log('[CanvasDetail] Loading from localStorage:', parsed.items.length);
+          console.log('[CanvasDetail] ✅ Loading from localStorage:', parsed.items.length);
           return parsed.items;
         }
       } catch (e) {
@@ -207,6 +210,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       }
     }
     
+    console.log('[CanvasDetail] ⚠️ Using default layout generation');
     const generatedItems: DraggableItem[] = [];
     const hasImages = item.images && item.images.length > 0;
     const imagesToLoad = hasImages ? item.images : [];
@@ -258,18 +262,23 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Load saved title and initialize saved state reference
   useEffect(() => {
-    const savedState = localStorage.getItem(`canvas-${item.id}`);
-    if (savedState && !readOnly) {
-      try {
-        const parsed = JSON.parse(savedState);
-        if (parsed.title) setTitle(parsed.title);
-        savedStateRef.current = savedState;
-      } catch (e) {
-        console.error('Failed to load saved title:', e);
+    // Initialize savedStateRef with current state after items are loaded
+    const currentState = JSON.stringify({ title, items });
+    savedStateRef.current = currentState;
+    
+    // Try to load saved title from localStorage (only in archive mode)
+    if (!readOnly) {
+      const savedState = localStorage.getItem(`canvas-${item.id}`);
+      if (savedState) {
+        try {
+          const parsed = JSON.parse(savedState);
+          if (parsed.title && parsed.title !== title) {
+            setTitle(parsed.title);
+          }
+        } catch (e) {
+          console.error('Failed to load saved title:', e);
+        }
       }
-    } else {
-      // Initialize saved state reference
-      savedStateRef.current = JSON.stringify({ title, items });
     }
   }, []);
 
@@ -407,7 +416,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   };
   
   return (
-    <>
     <div 
       className="fixed inset-0 bg-[#f0ece1] z-50 overflow-hidden flex flex-col font-sans"
       style={{
@@ -892,16 +900,14 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         )}
         </div>
       </div>
-    </div>
-
-      {/* Exit Confirmation Dialog - Moved outside for proper z-index layering */}
+      {/* Exit Confirmation Dialog */}
       <AnimatePresence>
         {showExitConfirm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center"
+            className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center"
             onClick={() => setShowExitConfirm(false)}
           >
             <motion.div
@@ -956,7 +962,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-    </>
+      </AnimatePresence>    </div>
   );
 };

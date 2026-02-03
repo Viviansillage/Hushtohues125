@@ -38,6 +38,7 @@ export function CommunityDetailPage({ postId, onBack }: CommunityDetailProps) {
           images: response.detail.images || [],
           mindmaps: response.detail.mindmaps || [],
           content: response.detail.content || '',
+          contentJson: response.detail.contentJson || null,  // ✅ Pass contentJson with layout
           tags: response.detail.tags || [],
           isPublic: response.detail.isPublic,
           author: response.detail.author,

@@ -117,9 +117,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         console.log('[HistoryPage] Loaded archive detail:', {
           id: detail.id,
           title: detail.title,
-          artifactCount: detail.artifacts?.length || 0,
-          previewImagesCount: detail.previewImages?.length || 0,
-          contentJson: detail.contentJson
+          artifactCount: detail.artifacts?.length || 0
         });
         setSelectedChatDetail(detail);
       } catch (error) {
@@ -212,13 +210,9 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
       const imageArtifacts = artifacts.filter(
         (artifact: any) => (artifact.type === 'image' || artifact.kind === 'image')
       );
-      console.log('[HistoryPage] Image artifacts:', imageArtifacts);
-      
       const allImages = imageArtifacts.map(
         (artifact: any) => artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url
       ).filter(Boolean);
-      
-      console.log('[HistoryPage] Extracted image URLs:', allImages);
 
       const mindmapArtifacts = artifacts
         .filter((artifact: any) => artifact.type === 'mindmap' || artifact.kind === 'mindmap')
@@ -240,14 +234,6 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
 
       // Fallback: 如果 artifacts 为空，使用 previewImages
       const imagesToShow = allImages.length > 0 ? allImages : selectedChatDetail.previewImages;
-      
-      console.log('[HistoryPage] Final images to show:', imagesToShow);
-      console.log('[HistoryPage] Passing to CanvasDetail:', {
-        id: selectedChatDetail.id,
-        title: selectedChatDetail.title,
-        imageCount: imagesToShow.length,
-        mindmapCount: mindmapArtifacts.length
-      });
 
       return (
         <CanvasDetail 

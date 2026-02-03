@@ -27,10 +27,16 @@ interface MindElixirEditorProps {
 export function MindElixirEditor({ data, onDataChange, className = '' }: MindElixirEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mindRef = useRef<any>(null);
-  const initializedRef = useRef<boolean>(false);
 
   useEffect(() => {
-    if (!containerRef.current || initializedRef.current) return;
+    if (!containerRef.current) return;
+    
+    // Clean up existing instance
+    if (mindRef.current) {
+      mindRef.current = null;
+    }
+
+    console.log('[MindElixir] Initializing with data:', data);
 
     // Initialize MindElixir
     const mind = new MindElixir({
@@ -46,10 +52,10 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
       allowUndo: true,
     });
 
-    initializedRef.current = true;
-
     mind.init(data);
     mindRef.current = mind;
+    
+    console.log('[MindElixir] Initialized successfully');
 
     // Replace Chinese menu text with English
     setTimeout(() => {
@@ -79,28 +85,22 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
       replaceText('.mind-elixir-toolbar button, .context-menu button', menuTranslations);
     }, 100);
 
-    // 监听数据变化
+    // Monitor data changes
     if (onDataChange) {
       mind.bus.addListener('operation', () => {
         const currentData = mind.getData() as MindMapData;
+        console.log('[MindElixir] Data changed:', currentData);
         onDataChange(currentData);
       });
     }
 
     return () => {
       if (mindRef.current) {
+        console.log('[MindElixir] Cleaning up');
         mindRef.current = null;
       }
-      initializedRef.current = false;
     };
-  }, []);
-
-  // 当外部数据变化时更新
-  useEffect(() => {
-    if (mindRef.current && data) {
-      mindRef.current.refresh(data);
-    }
-  }, [data]);
+  }, [data, onDataChange]);
 
   return (
     <div 

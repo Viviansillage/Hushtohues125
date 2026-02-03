@@ -89,11 +89,18 @@ const ShareCircleButton = ({ icon, label, onClick, isActive = false }: { icon: R
 
 const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableItem, onChange: (val: string) => void, readOnly?: boolean }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isNewItem = item.content === '' || item.content === 'Type something...';
   
   useLayoutEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      
+      // Auto-focus and select text for new items
+      if (isNewItem && !readOnly) {
+        textareaRef.current.focus();
+        textareaRef.current.select();
+      }
     }
   }, [item.content, item.width]);
 
@@ -110,7 +117,8 @@ const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableIte
         paddingTop: '0.2rem', // Fine-tune text alignment with lines
         minHeight: '3rem'
       }}
-      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     />
   );
 };
@@ -286,7 +294,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     const newItem: DraggableItem = {
       id: `txt_${Date.now()}`,
       type: 'text',
-      content: 'Type something...',
+      content: '',
       x,
       y,
       width: 300,

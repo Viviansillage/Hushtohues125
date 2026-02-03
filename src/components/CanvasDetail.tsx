@@ -5,6 +5,7 @@ import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
 import { MindElixirEditor, MindMapData } from './MindElixirEditor';
 import { mermaidToMindElixir, mindElixirToMermaid } from '../lib/mermaidConverter';
+import { updateHistoryItem } from '../lib/api';
 
 export interface CanvasItem {
   id: string;
@@ -305,14 +306,40 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     setItems(prev => [...prev, newItem]);
   };
 
-  // Auto-save canvas state when component unmounts
-  useEffect(() => {
-    return () => {
-      console.log('[CanvasDetail] Auto-saving canvas state on exit...');
-      // Canvas state (items, title) will be automatically saved
-      // TODO: Add API call here when backend save endpoint is ready
-    };
-  }, [items, title]);
+  // Handle close with auto-save
+  const handleClose = async () => {
+    if (readOnly) {
+      onClose();
+      return;
+    }
+
+    try {
+      console.log('[CanvasDetail] Saving canvas state...');
+      
+      // 将canvas items序列化保存到history item
+      const canvasData = {
+        items: items,
+        title: title
+      };
+
+      await updateHistoryItem(item.id, {
+        title: title,
+        // 将canvas数据保存到content字段（可以根据实际后端schema调整）
+        content: JSON.stringify(canvasData),
+        tags: item.tags || [],
+        isPublic: item.isPublic || false,
+        timestamp: new Date().toISOString()
+      });
+      
+      toast.success('Canvas saved successfully');
+      console.log('[CanvasDetail] Canvas saved successfully');
+    } catch (error) {
+      console.error('[CanvasDetail] Failed to save canvas:', error);
+      toast.error('Failed to save canvas');
+    } finally {
+      onClose();
+    }
+  };
   
   return (
     <div 
@@ -389,7 +416,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       {/* Header Bar */}
       <div className="absolute top-0 left-0 w-full p-6 z-[100] flex justify-between items-start pointer-events-none no-print">
         <button 
-          onClick={onClose}
+          onClick={handleClose}
           className="flex items-center gap-2 text-[#6d6d6d] hover:text-[#1a1a1a] transition-colors handwritten group pointer-events-auto"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-x-1 transition-transform">

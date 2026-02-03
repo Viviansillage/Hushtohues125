@@ -155,7 +155,7 @@ export default function App() {
           : prev.filter((id) => id !== postId)
       );
       setCommunityPosts((prev) =>
-        prev.map((post) => (post.id === postId ? { ...post, likes: result.likes } : post))
+        prev.map((post) => (post.id === postId ? { ...post, likes: result.likes ?? post.likes } : post))
       );
     } catch (error) {
       console.error('Failed to toggle like', error);

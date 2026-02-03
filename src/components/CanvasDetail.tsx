@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Resizable } from 're-resizable';
 import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
+import { MindElixirEditor, MindMapData } from './MindElixirEditor';
+import { mermaidToMindElixir, mindElixirToMermaid } from '../lib/mermaidConverter';
 
 export interface CanvasItem {
   id: string;
@@ -155,6 +157,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   const [isPreview, setIsPreview] = useState(readOnly);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+  const [editingMindmapId, setEditingMindmapId] = useState<string | null>(null);
+  const [mindmapData, setMindmapData] = useState<Record<string, MindMapData>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Social State
@@ -746,17 +750,54 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                       }}
                     ></div>
                     <div className="relative z-10">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">🧠</span>
-                        <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
-                          {item.meta?.title || 'Mindmap'}
-                        </h3>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🧠</span>
+                          <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
+                            {item.meta?.title || 'Mindmap'}
+                          </h3>
+                        </div>
+                        {!isPreview && !readOnly && (
+                          <button
+                            onClick={() => {
+                              if (editingMindmapId === item.id) {
+                                // 保存并退出编辑模式
+                                const data = mindmapData[item.id];
+                                if (data) {
+                                  const newMermaidCode = mindElixirToMermaid(data);
+                                  setItems(prev => prev.map(i => 
+                                    i.id === item.id ? { ...i, content: newMermaidCode } : i
+                                  ));
+                                }
+                                setEditingMindmapId(null);
+                              } else {
+                                // 进入编辑模式
+                                const data = mermaidToMindElixir(item.content || 'mindmap\n  root((Empty))');
+                                setMindmapData(prev => ({ ...prev, [item.id]: data }));
+                                setEditingMindmapId(item.id);
+                              }
+                            }}
+                            className="px-3 py-1 text-sm bg-[#1a1a1a] text-[#faf8f3] rounded handwritten hover:bg-[#333] transition-colors"
+                          >
+                            {editingMindmapId === item.id ? '保存' : '编辑'}
+                          </button>
+                        )}
                       </div>
                       <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
-                        <MermaidMindmap
-                          mermaidCode={item.content || 'mindmap\n  root((Empty))'}
-                          id={item.id}
-                        />
+                        {editingMindmapId === item.id ? (
+                          <MindElixirEditor
+                            data={mindmapData[item.id]}
+                            onDataChange={(data) => {
+                              setMindmapData(prev => ({ ...prev, [item.id]: data }));
+                            }}
+                            className="min-h-[400px]"
+                          />
+                        ) : (
+                          <MermaidMindmap
+                            mermaidCode={item.content || 'mindmap\n  root((Empty))'}
+                            id={item.id}
+                          />
+                        )}
                       </div>
                       {item.meta?.summary && (
                         <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>

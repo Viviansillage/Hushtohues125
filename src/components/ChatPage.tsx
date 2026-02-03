@@ -13,7 +13,7 @@ interface Message {
   sender: 'user' | 'bot';
   timestamp: Date;
   artifact?: {
-    type: 'mindmap' | 'diagram' | 'image' | 'save';
+    type: 'mindmap' | 'image' | 'save';
     data?: any;
     artifactId?: string;  // 后端返回的artifactId
     saved?: boolean;      // 是否已保存到archive
@@ -243,21 +243,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         // ✅ 添加 provider 和 model 信息
         if (response.provider) mappedMessage.provider = response.provider;
         if (response.model) mappedMessage.model = response.model;
-        
-        // ✅ 自动添加AI生成的图表（如果有）
-        if (response.structured?.diagram && response.structured.diagram.type !== 'none' && response.structured.diagram.mermaidCode) {
-          mappedMessage.artifact = {
-            type: 'diagram',
-            data: {
-              diagramType: response.structured.diagram.type,
-              mermaidCode: response.structured.diagram.mermaidCode,
-              title: response.structured.diagram.title || 'Diagram',
-              description: response.structured.diagram.description
-            }
-          };
-          console.log('📊 Auto-generated diagram:', response.structured.diagram.type);
-        }
-        
         appendMessage(mappedMessage);
       }
     } catch (error) {
@@ -746,91 +731,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                     >
                       {message.artifact?.saved ? '✓ Saved' : 'Save'}
                     </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 渲染自动生成的图表 */}
-                {message.artifact?.type === 'diagram' && message.artifact.data && (
-                  <div className="mt-4 p-6 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
-                    {/* 头部 */}
-                    <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
-                      <span className="text-2xl">
-                        {message.artifact.data.diagramType === 'flowchart' && '🔄'}
-                        {message.artifact.data.diagramType === 'sequence' && '📡'}
-                        {message.artifact.data.diagramType === 'gantt' && '📅'}
-                        {message.artifact.data.diagramType === 'class' && '🏗️'}
-                        {message.artifact.data.diagramType === 'erDiagram' && '🗄️'}
-                        {message.artifact.data.diagramType === 'mindmap' && '🧠'}
-                      </span>
-                      <h3 className="font-bold text-xl text-gray-800">
-                        {message.artifact.data.title || 'Diagram'}
-                      </h3>
-                    </div>
-                    
-                    {/* 主内容区 */}
-                    <div className="bg-white rounded-lg p-4 overflow-x-auto">
-                      <MermaidMindmap 
-                        mermaidCode={message.artifact.data.mermaidCode} 
-                        id={message.id}
-                      />
-                    </div>
-                    
-                    {/* 描述文字区 */}
-                    {message.artifact.data.description && (
-                      <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.description}</p>
-                    )}
-                    
-                    {/* 底部操作栏 */}
-                    <div className="flex justify-end mt-4">
-                      <button
-                        onClick={async () => {
-                          try {
-                            console.log('[Diagram Save] Saving diagram...');
-                            const response = await fetch('/api/archive', {
-                              method: 'POST',
-                              headers: { 
-                                'Content-Type': 'application/json',
-                                'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
-                              },
-                              body: JSON.stringify({
-                                sessionId: conversationId,
-                                artifact: {
-                                  type: 'diagram',
-                                  data: message.artifact?.data
-                                }
-                              })
-                            });
-                            
-                            const result = await response.json();
-                            if (response.ok && result.ok === true && result.archiveId) {
-                              const updated = messages.map(m => 
-                                m.id === message.id && m.artifact
-                                  ? { ...m, artifact: { ...m.artifact, saved: true } }
-                                  : m
-                              );
-                              setMessages(updated);
-                              toast.success('✅ Diagram saved to archive');
-                              if (onHistorySync) {
-                                onHistorySync();
-                              }
-                            } else {
-                              throw new Error(result.error || 'Save validation failed');
-                            }
-                          } catch (err) {
-                            console.error('[Diagram Save] Error:', err);
-                            toast.error('Failed to save diagram');
-                          }
-                        }}
-                        disabled={message.artifact?.saved}
-                        className={`px-4 py-2 text-sm font-bold transition-all border-[2.5px] border-[#1a1a1a] hand-drawn-border ${
-                          message.artifact?.saved
-                            ? 'bg-[#e8e4d9] text-[#6d6d6d] cursor-not-allowed opacity-60'
-                            : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] hover:translate-y-[-1px]'
-                        }`}
-                      >
-                        {message.artifact?.saved ? '✓ Saved' : 'Save'}
-                      </button>
                     </div>
                   </div>
                 )}

@@ -83,8 +83,7 @@ export default async function handler(req, res) {
               isPublic: item.is_public || false,
               tags: Array.isArray(item.tags) ? item.tags : [],
               timestamp: item.timestamp || new Date().toISOString(),
-              isDemo: item.is_demo || false,
-              contentJson: item.content_json  // 返回canvas保存数据
+              isDemo: item.is_demo || false
             };
           } catch (parseError) {
             console.error(`[${requestId}] [history.js] Failed to parse item ${item.id}:`, parseError.message);
@@ -217,7 +216,6 @@ async function handleHistoryById(req, res, id) {
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
       if (body.tags !== undefined) updates.tags = body.tags;
-      if (body.contentJson !== undefined) updates.content_json = body.contentJson;
 
       const { data, error } = await supabase
         .from('chat_history')
@@ -241,8 +239,7 @@ async function handleHistoryById(req, res, id) {
         timestamp: data.timestamp,
         previewImages: data.preview_images || [],
         isPublic: data.is_public,
-        tags: data.tags || [],
-        contentJson: data.content_json  // 返回保存的canvas数据
+        tags: data.tags || []
       });
     }
 

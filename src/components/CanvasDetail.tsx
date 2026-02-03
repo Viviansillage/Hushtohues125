@@ -3,9 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Resizable } from 're-resizable';
 import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
-import { MindElixirEditor, MindMapData } from './MindElixirEditor';
-import { mermaidToMindElixir, mindElixirToMermaid } from '../lib/mermaidConverter';
-import { updateHistoryItem } from '../lib/api';
 
 export interface CanvasItem {
   id: string;
@@ -19,11 +16,6 @@ export interface CanvasItem {
   stats?: {
     likes: number;
     comments: number;
-  };
-  contentJson?: {
-    items?: DraggableItem[];
-    canvasTitle?: string;
-    savedAt?: string;
   };
 }
 
@@ -95,18 +87,11 @@ const ShareCircleButton = ({ icon, label, onClick, isActive = false }: { icon: R
 
 const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableItem, onChange: (val: string) => void, readOnly?: boolean }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isNewItem = item.content === '' || item.content === 'Type something...';
   
   useLayoutEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-      
-      // Auto-focus and select text for new items
-      if (isNewItem && !readOnly) {
-        textareaRef.current.focus();
-        textareaRef.current.select();
-      }
     }
   }, [item.content, item.width]);
 
@@ -123,8 +108,7 @@ const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableIte
         paddingTop: '0.2rem', // Fine-tune text alignment with lines
         minHeight: '3rem'
       }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
     />
   );
 };
@@ -166,13 +150,11 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
 };
 
 export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailProps) => {
-  const [title, setTitle] = useState(item.contentJson?.canvasTitle || item.title);
+  const [title, setTitle] = useState(item.title);
   // Default isPreview to readOnly (true in community view, false in archive edit)
   const [isPreview, setIsPreview] = useState(readOnly);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
-  const [editingMindmapId, setEditingMindmapId] = useState<string | null>(null);
-  const [mindmapData, setMindmapData] = useState<Record<string, MindMapData>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Social State
@@ -186,14 +168,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Initialize items
   const [items, setItems] = useState<DraggableItem[]>(() => {
-    // 优先从contentJson恢复保存的canvas状态
-    if (item.contentJson?.items && item.contentJson.items.length > 0) {
-      console.log('[CanvasDetail] Restoring canvas from saved state:', item.contentJson.items.length, 'items');
-      return item.contentJson.items;
-    }
-
-    // 如果没有保存的状态，生成默认items
-    console.log('[CanvasDetail] Generating default canvas items');
     const generatedItems: DraggableItem[] = [];
     const hasImages = item.images && item.images.length > 0;
     const imagesToLoad = hasImages ? item.images : [];
@@ -296,8 +270,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     if (readOnly || isPreview) return;
     
     // Only trigger if clicking directly on the canvas background
-    const targetId = (e.target as HTMLElement).id;
-    if (e.target !== e.currentTarget && targetId !== 'canvas-area' && targetId !== 'canvas-inner') return;
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).id !== 'canvas-area') return;
 
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -308,7 +281,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     const newItem: DraggableItem = {
       id: `txt_${Date.now()}`,
       type: 'text',
-      content: '',
+      content: 'Type something...',
       x,
       y,
       width: 300,
@@ -317,68 +290,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     };
 
     setItems(prev => [...prev, newItem]);
-  };
-
-  // Handle close with auto-save
-  const handleClose = async () => {
-    console.log('[CanvasDetail] handleClose called, readOnly:', readOnly);
-    
-    if (readOnly) {
-      onClose();
-      return;
-    }
-
-    try {
-      console.log('[CanvasDetail] Starting save process...');
-      console.log('[CanvasDetail] Item ID:', item.id);
-      console.log('[CanvasDetail] Items to save:', items.length, 'items');
-      console.log('[CanvasDetail] Title:', title);
-      
-      // 将canvas items序列化保存到history item的content_json字段
-      const canvasData = {
-        items: items,
-        canvasTitle: title,
-        savedAt: new Date().toISOString()
-      };
-
-      console.log('[CanvasDetail] Canvas data prepared:', canvasData);
-      
-      const updatePayload = {
-        title: title,
-        contentJson: canvasData,  // 使用contentJson字段保存canvas数据
-        tags: item.tags || [],
-        isPublic: item.isPublic || false,
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log('[CanvasDetail] Calling updateHistoryItem with payload:', updatePayload);
-      
-      const result = await updateHistoryItem(item.id, updatePayload);
-      
-      console.log('[CanvasDetail] API response:', result);
-      console.log('[CanvasDetail] Canvas saved successfully!');
-      
-      toast.success('Canvas saved successfully', {
-        duration: 2000,
-      });
-      
-      // 等待toast显示后再关闭
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error('[CanvasDetail] Failed to save canvas:', error);
-      if (error instanceof Error) {
-        console.error('[CanvasDetail] Error message:', error.message);
-        console.error('[CanvasDetail] Error stack:', error.stack);
-      }
-      toast.error(`Failed to save canvas: ${error instanceof Error ? error.message : 'Unknown error'}`, {
-        duration: 3000,
-      });
-      // 即使保存失败也等待一下让用户看到错误消息
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } finally {
-      console.log('[CanvasDetail] Closing canvas...');
-      onClose();
-    }
   };
   
   return (
@@ -456,7 +367,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       {/* Header Bar */}
       <div className="absolute top-0 left-0 w-full p-6 z-[100] flex justify-between items-start pointer-events-none no-print">
         <button 
-          onClick={handleClose}
+          onClick={onClose}
           className="flex items-center gap-2 text-[#6d6d6d] hover:text-[#1a1a1a] transition-colors handwritten group pointer-events-auto"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-x-1 transition-transform">
@@ -731,12 +642,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
       >
         {/* 内层容器：提供足够高度触发滚动 */}
-        <div 
-          id="canvas-inner" 
-          className="relative w-full" 
-          style={{ minHeight: `${calculatedMinHeight}px` }}
-          onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
-        >
+        <div className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
         {/* Centered Title - Draggable */}
         <motion.div
            drag={!isPreview && !readOnly}
@@ -770,22 +676,12 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             drag={!isPreview && !readOnly}
             dragMomentum={false}
             onDragStart={() => !isPreview && !readOnly && bringToFront(item.id)}
-            onDragEnd={(e, info) => {
-              if (!isPreview && !readOnly) {
-                const newX = item.x + info.offset.x;
-                const newY = item.y + info.offset.y;
-                setItems(prev => prev.map(i => 
-                  i.id === item.id ? { ...i, x: newX, y: newY } : i
-                ));
-              }
-            }}
+            initial={{ x: item.x, y: item.y }}
             style={{ 
                 position: 'absolute', 
                 zIndex: item.zIndex,
                 top: 0,
-                left: 0,
-                x: item.x,
-                y: item.y
+                left: 0
             }}
             className="group"
           >
@@ -850,38 +746,17 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                       }}
                     ></div>
                     <div className="relative z-10">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg">🧠</span>
-                          <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
-                            {item.meta?.title || 'Mindmap'}
-                          </h3>
-                        </div>
-                        {/* Edit button temporarily disabled - mindmap editing needs refactoring */}
-                        {false && !isPreview && !readOnly && (
-                          <button
-                            disabled
-                            className="px-3 py-1 text-sm bg-[#1a1a1a]/30 text-[#faf8f3] rounded handwritten cursor-not-allowed"
-                          >
-                            Edit (Coming Soon)
-                          </button>
-                        )}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">🧠</span>
+                        <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
+                          {item.meta?.title || 'Mindmap'}
+                        </h3>
                       </div>
-                      <div className="bg-white rounded-lg p-3 overflow-x-auto" style={{ minHeight: editingMindmapId === item.id ? '600px' : '200px' }}>
-                        {editingMindmapId === item.id ? (
-                          <MindElixirEditor
-                            key={item.id}
-                            data={mindmapData[item.id]}
-                            onDataChange={(data) => {
-                              setMindmapData(prev => ({ ...prev, [item.id]: data }));
-                            }}
-                          />
-                        ) : (
-                          <MermaidMindmap
-                            mermaidCode={item.content || 'mindmap\n  root((Empty))'}
-                            id={item.id}
-                          />
-                        )}
+                      <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
+                        <MermaidMindmap
+                          mermaidCode={item.content || 'mindmap\n  root((Empty))'}
+                          id={item.id}
+                        />
                       </div>
                       {item.meta?.summary && (
                         <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>
@@ -902,9 +777,10 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                        item={item} 
                        readOnly={isPreview || readOnly}
                        onChange={(val) => {
-                         setItems(prev => prev.map(i => 
-                           i.id === item.id ? { ...i, content: val } : i
-                         ));
+                         const newItems = [...items];
+                         const idx = newItems.findIndex(i => i.id === item.id);
+                         newItems[idx].content = val;
+                         setItems(newItems);
                        }} 
                      />
                   </div>
@@ -912,15 +788,14 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             </Resizable>
           </motion.div>
         ))}
+        
+        {!isPreview && !readOnly && (
+            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide transition-opacity`}>
+                ( Double click empty space to add text )
+            </div>
+        )}
         </div>
       </div>
-      
-      {/* Canvas Caption - Outside scroll container for proper fixed positioning */}
-      {!isPreview && !readOnly && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide z-[60]">
-          ( Double click empty space to add text )
-        </div>
-      )}
     </div>
   );
 };

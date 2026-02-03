@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import MindElixir from 'mind-elixir';
-import 'mind-elixir/dist/MindElixir.css';
 
 export interface MindNode {
   topic: string;

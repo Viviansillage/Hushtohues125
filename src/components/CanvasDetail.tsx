@@ -694,12 +694,22 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             drag={!isPreview && !readOnly}
             dragMomentum={false}
             onDragStart={() => !isPreview && !readOnly && bringToFront(item.id)}
-            initial={{ x: item.x, y: item.y }}
+            onDragEnd={(e, info) => {
+              if (!isPreview && !readOnly) {
+                const newX = item.x + info.offset.x;
+                const newY = item.y + info.offset.y;
+                setItems(prev => prev.map(i => 
+                  i.id === item.id ? { ...i, x: newX, y: newY } : i
+                ));
+              }
+            }}
             style={{ 
                 position: 'absolute', 
                 zIndex: item.zIndex,
                 top: 0,
-                left: 0
+                left: 0,
+                x: item.x,
+                y: item.y
             }}
             className="group"
           >

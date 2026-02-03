@@ -96,11 +96,14 @@ export default async function handler(req, res) {
           ? [...currentPreviews, newImageUrl]
           : currentPreviews;
 
+        // ✅ 保留原有的 last_message，不要用新artifact覆盖
+        const preservedLastMessage = existingArchive.last_message || lastMessage.substring(0, 200);
+
         const { data: updated, error: updateError } = await supabase
           .from('chat_history')
           .update({
             message_count: messageCount,
-            last_message: lastMessage.substring(0, 200),
+            last_message: preservedLastMessage,
             content_json: {
               ...existingArchive.content_json,
               artifacts: updatedArtifacts,

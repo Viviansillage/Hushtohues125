@@ -165,7 +165,10 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   const [isPreview, setIsPreview] = useState(readOnly);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const savedStateRef = useRef<string>(''); // 用于比较是否有修改
   
   // Social State
   const [likes, setLikes] = useState(item.stats?.likes || 0);
@@ -178,6 +181,17 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Initialize items
   const [items, setItems] = useState<DraggableItem[]>(() => {
+    // Try to load saved state from localStorage
+    const savedState = localStorage.getItem(`canvas-${item.id}`);
+    if (savedState && !readOnly) {
+      try {
+        const parsed = JSON.parse(savedState);
+        return parsed.items || [];
+      } catch (e) {
+        console.error('Failed to parse saved state:', e);
+      }
+    }
+    
     const generatedItems: DraggableItem[] = [];
     const hasImages = item.images && item.images.length > 0;
     const imagesToLoad = hasImages ? item.images : [];
@@ -227,6 +241,29 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     return generatedItems;
   });
 
+  // Load saved title and initialize saved state reference
+  useEffect(() => {
+    const savedState = localStorage.getItem(`canvas-${item.id}`);
+    if (savedState && !readOnly) {
+      try {
+        const parsed = JSON.parse(savedState);
+        if (parsed.title) setTitle(parsed.title);
+        savedStateRef.current = savedState;
+      } catch (e) {
+        console.error('Failed to load saved title:', e);
+      }
+    } else {
+      // Initialize saved state reference
+      savedStateRef.current = JSON.stringify({ title, items });
+    }
+  }, []);
+
+  // Track changes
+  useEffect(() => {
+    const currentState = JSON.stringify({ title, items });
+    setHasUnsavedChanges(currentState !== savedStateRef.current);
+  }, [title, items]);
+
   // 计算需要的最小画布高度（基于图片数量）
   const imageCount = item.images?.length || 0;
   const calculatedMinHeight = imageCount > 0 
@@ -274,6 +311,37 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
     setComments(prev => [comment, ...prev]);
     setNewComment('');
+  };
+
+  const handleSave = () => {
+    const dataToSave = {
+      title,
+      items,
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem(`canvas-${item.id}`, JSON.stringify(dataToSave));
+    savedStateRef.current = JSON.stringify({ title, items });
+    setHasUnsavedChanges(false);
+    toast.success('Canvas saved!', { className: 'handwritten font-bold' });
+  };
+
+  const handleClose = () => {
+    if (hasUnsavedChanges && !readOnly) {
+      setShowExitConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleExitWithoutSaving = () => {
+    setShowExitConfirm(false);
+    onClose();
+  };
+
+  const handleSaveAndExit = () => {
+    handleSave();
+    setShowExitConfirm(false);
+    onClose();
   };
 
   const handleCanvasDoubleClick = (e: React.MouseEvent) => {
@@ -381,7 +449,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       {/* Header Bar */}
       <div className="absolute top-0 left-0 w-full p-6 z-[100] flex justify-between items-start pointer-events-none no-print">
         <button 
-          onClick={onClose}
+          onClick={handleClose}
           className="flex items-center gap-2 text-[#6d6d6d] hover:text-[#1a1a1a] transition-colors handwritten group pointer-events-auto"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-x-1 transition-transform">
@@ -391,9 +459,16 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         </button>
         
         <div className="flex items-center gap-4 pointer-events-auto">
-          {/* Archive Mode Controls - Preview & Share (Only shown in non-readOnly mode) */}
+          {/* Archive Mode Controls - Save, Preview & Share (Only shown in non-readOnly mode) */}
           {!readOnly && (
             <div className="flex items-center gap-3 mr-4">
+              <ShareCircleButton 
+                icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>}
+                label={hasUnsavedChanges ? "Save *" : "Save"}
+                isActive={hasUnsavedChanges}
+                onClick={handleSave}
+              />
+              
               <ShareCircleButton 
                 icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>}
                 label="Preview"
@@ -818,6 +893,68 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         )}
         </div>
       </div>
-    </div>
+      {/* Exit Confirmation Dialog */}
+      <AnimatePresence>
+        {showExitConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center"
+            onClick={() => setShowExitConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#faf8f3] p-8 max-w-md w-full mx-4 relative"
+              style={{
+                border: '3px solid #1a1a1a',
+                borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px',
+                filter: 'url(#hand-drawn-border)'
+              }}
+            >
+              <h3 className="text-2xl font-bold mb-4 handwritten text-[#1a1a1a]">
+                Unsaved Changes
+              </h3>
+              <p className="text-[#4a4a4a] mb-6 font-sans">
+                You have unsaved changes. Do you want to save them before leaving?
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleSaveAndExit}
+                  className="w-full bg-[#1a1a1a] text-[#faf8f3] py-3 px-4 handwritten font-bold text-lg hover:bg-[#333] transition-colors"
+                  style={{
+                    border: '2px solid #1a1a1a',
+                    filter: 'url(#hand-drawn-border)'
+                  }}
+                >
+                  Save and Exit
+                </button>
+                
+                <button
+                  onClick={handleExitWithoutSaving}
+                  className="w-full bg-transparent text-[#1a1a1a] py-3 px-4 handwritten font-bold text-lg hover:bg-[#1a1a1a]/5 transition-colors"
+                  style={{
+                    border: '2px solid #1a1a1a',
+                    filter: 'url(#hand-drawn-border)'
+                  }}
+                >
+                  Exit Without Saving
+                </button>
+                
+                <button
+                  onClick={() => setShowExitConfirm(false)}
+                  className="w-full bg-transparent text-[#6d6d6d] py-3 px-4 handwritten text-lg hover:text-[#1a1a1a] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>    </div>
   );
 };

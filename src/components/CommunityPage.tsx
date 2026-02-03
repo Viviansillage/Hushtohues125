@@ -5,10 +5,12 @@ import { CanvasDetail } from './CanvasDetail';
 // --- Types ---
 
 export interface Post {
-  id: string;
+  id: string;  // ✅ MUST be community_posts.id (uuid)
   title: string;
   author: {
     name: string;
+    type?: string;
+    id?: string;
   };
   imageUrl: string;
   content: string;
@@ -16,6 +18,7 @@ export interface Post {
   comments: number;
   timestamp: Date;
   tags: string[];
+  communityName?: string | null;
 }
 
 export interface CommunityTag {
@@ -30,7 +33,7 @@ export interface CommunityTag {
 }
 
 interface CommunityPageProps {
-  onNavigateToCommunity?: (name: string) => void;
+  onNavigateToCommunity?: (postId: string) => void;  // ✅ postId is community_posts.id
   posts: Post[];
   likedPosts: string[];
   bookmarkedPosts: string[];
@@ -232,7 +235,8 @@ export function CommunityPage({
                             key={community.name}
                             className="p-3 hover:bg-[#e8e4d9]/50 flex items-center justify-between group transition-colors cursor-pointer border-b border-[#1a1a1a]/5 last:border-0"
                             onClick={() => {
-                                if (onNavigateToCommunity) onNavigateToCommunity(community.name);
+                                // TODO: 改为筛选 Discover 列表，而不是跳转详情页
+                                // if (onNavigateToCommunity) onNavigateToCommunity(community.name);
                             }}
                           >
                             <div className="flex items-center gap-3">
@@ -283,8 +287,9 @@ export function CommunityPage({
                 {followedCommunities.map((community) => (
                   <div 
                     key={community.name}
-                    className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hand-drawn-border wireframe-shadow group relative hover:-translate-y-1 transition-transform cursor-pointer"
-                    onClick={() => onNavigateToCommunity && onNavigateToCommunity(community.name)}
+                    className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hand-drawn-border wireframe-shadow group relative hover:-translate-y-1 transition-transform"
+                    // TODO: 改为筛选 Discover 列表
+                    // onClick={() => onNavigateToCommunity && onNavigateToCommunity(community.name)}
                   >
                     {/* Community Header */}
                     <div className="flex items-start justify-between mb-6">
@@ -369,11 +374,18 @@ export function CommunityPage({
                 transition={{ duration: 0.2 }}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
               >
-                {posts.map((post) => (
+                {posts.map((post) => {
+                  // ✅ MUST use post.id (community_posts.id) - no fallback
+                  if (!post.id) {
+                    console.error('[Discover Card] Missing post.id:', post);
+                    return null;
+                  }
+                  
+                  return (
                   <article
                     key={post.id}
                     className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] hand-drawn-border wireframe-shadow overflow-hidden group flex flex-col cursor-pointer"
-                    onClick={() => setSelectedPostId(post.id)}
+                    onClick={() => onNavigateToCommunity && onNavigateToCommunity(post.id)}
                   >
                     {/* Image Area - Prominent */}
                     <div className="relative w-full aspect-[16/9] border-b-[2.5px] border-[#1a1a1a] bg-[#e8e4d9] overflow-hidden">
@@ -426,10 +438,11 @@ export function CommunityPage({
                           {post.tags.map((tag) => (
                             <span
                               key={tag}
-                              className="px-2 py-1 border-[1.5px] border-[#1a1a1a] text-xs font-bold hand-drawn-border bg-white hover:bg-[#e8e4d9] cursor-pointer transition-colors uppercase tracking-wide"
+                              className="px-2 py-1 border-[1.5px] border-[#1a1a1a] text-xs font-bold hand-drawn-border bg-white hover:bg-[#e8e4d9] transition-colors uppercase tracking-wide"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (onNavigateToCommunity) onNavigateToCommunity(tag);
+                                // TODO: 改为筛选 Discover 列表
+                                // if (onNavigateToCommunity) onNavigateToCommunity(tag);
                               }}
                             >
                               #{tag}
@@ -461,7 +474,8 @@ export function CommunityPage({
                         </div>
                     </div>
                   </article>
-                ))}
+                  );
+                }).filter(Boolean)}
               </motion.div>
             )}
           </AnimatePresence>

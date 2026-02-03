@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 export interface ChatHistory {
   id: string;
+  sessionId: string;  // ✅ chat_history.session_id
   title: string;
   messageCount: number;
   lastMessage: string;
@@ -13,6 +14,7 @@ export interface ChatHistory {
   previewImages: string[];
   isPublic: boolean;
   tags: string[];
+  communityPostId?: string;  // ✅ 持久化发布后的 community_posts.id
   artifacts?: Array<{  // 添加 artifacts 字段
     kind: 'mindmap' | 'image' | 'save';
     createdAt: string;
@@ -160,10 +162,28 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
     onUpdateHistory(id, { title: newTitle });
   };
 
-  const togglePublic = (id: string) => {
+  const togglePublic = async (id: string) => {
     const target = history.find(item => item.id === id);
     if (!target) return;
-    onUpdateHistory(id, { isPublic: !target.isPublic });
+    
+    // ✅ 关键：使用 sessionId 而不是 id
+    if (!target.sessionId) {
+      console.error('[HistoryPage] Missing sessionId for item:', id);
+      toast.error('Cannot publish: missing session ID');
+      return;
+    }
+    
+    const newPublicState = !target.isPublic;
+    
+    // ✅ 直接更新 - 后端 PATCH 会自动处理 publish/unpublish 到 community_posts
+    onUpdateHistory(id, { isPublic: newPublicState });
+    
+    // Show user feedback
+    if (newPublicState) {
+      toast.success('Publishing to Community...');
+    } else {
+      toast.success('Unpublished from Community');
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent, id: string) => {

@@ -34,6 +34,7 @@ export type ApiProfile = {
 
 export type ApiHistoryItem = {
   id: string;
+  sessionId: string;  // ✅ chat_history.session_id
   title: string;
   messageCount: number;
   lastMessage: string;
@@ -44,13 +45,14 @@ export type ApiHistoryItem = {
 };
 
 export type ApiCommunityPost = {
-  id: string;
+  id: string;  // ✅ community_posts.id (uuid) - ONLY valid identifier
   title: string;
   author: {
     name: string;
+    type?: string;
+    id?: string;
   };
-  imageUrl: string;
-  content: string;
+  imageUrl: string | null;
   likes: number;
   comments: number;
   timestamp: string;
@@ -159,24 +161,37 @@ export const unfollowCommunity = (name: string) =>
     body: JSON.stringify({ name })
   });
 
-export const getCommunityDetail = (name: string) =>
+export const getCommunityDetail = (postId: string) =>
   request<{
-    name: string;
+    post?: {
+      id: string;
+      historyId: string;
+      authorId: string;
+      createdAt: string;
+    };
     detail: {
-      members: number;
-      online: number;
-      posts: Array<{
-        id: string;
-        author: { name: string };
-        content: string;
+      postId: string;
+      historyId?: string;
+      sessionId: string;
+      title: string;
+      author: { name: string; type: string; id: string };
+      images: string[];
+      mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
+      messages?: Array<{ sender: string; text: string; timestamp: string }>;
+      content: string;
+      tags: string[];
+      isPublic: boolean;
+      readOnly: boolean;  // ✅ 只读标记
+      stats: {
         likes: number;
         comments: number;
-        timestamp: string;
-        tags: string[];
-      }>;
+        views: number;
+      };
+      timestamp: string;
+      communityName: string | null;
     };
     joined: boolean;
-  }>(`/api/community?action=detail&community=${encodeURIComponent(name)}`);
+  }>(`/api/community?action=detail&postId=${encodeURIComponent(postId)}`);
 
 export const toggleCommunityJoin = (name: string) =>
   request<{ joined: boolean }>(`/api/community?action=join&community=${name}`, { method: 'POST' });
@@ -336,10 +351,13 @@ export const saveToArchive = (payload: {
 
 /**
  * 发布到 Community（Guest 也可以发布）
+ * ✅ 使用统一路由 /api/community?action=publish
  */
 export const publishToCommunity = (payload: {
-  title: string;
-  content: string;
+  sessionId?: string;  // ✅ 必须：使用 sessionId 引用 archive
+  historyId?: string;  // 兼容字段
+  title?: string;
+  content?: string;
   contentJson?: any;
   summary?: string;
   tags?: string[];
@@ -348,8 +366,8 @@ export const publishToCommunity = (payload: {
   imageUrl?: string;
   assetUrls?: string[];
 }) =>
-  request<{ id: string; title: string; timestamp: string; isDemo: boolean }>(
-    '/api/community/publish',
+  request<{ ok: boolean; postId: string; id: string; sessionId: string; timestamp: string }>(
+    '/api/community?action=publish',  // ✅ 统一路由
     {
       method: 'POST',
       body: JSON.stringify(payload)
@@ -382,7 +400,26 @@ export const unlikePost = (postId: string) =>
 
 /**
  * 获取 Discover Feed（seed 优先）
+ * ✅ 错误处理：即使后端返回 {posts: [], error: ...}，也不 throw
  */
-export const getDiscoverFeed = () =>
-  request<ApiCommunityPost[]>('/api/community?discover=true');
+export const getDiscoverFeed = async (): Promise<ApiCommunityPost[]> => {
+  try {
+    const result = await request<ApiCommunityPost[] | { posts: ApiCommunityPost[], error?: string }>('/api/community?discover=true');
+    
+    // ✅ 处理后端返回的错误格式 {posts: [], error: ...}
+    if (result && typeof result === 'object' && 'posts' in result) {
+      if (result.error) {
+        console.error('[getDiscoverFeed] Backend error:', result.error);
+      }
+      return result.posts || [];
+    }
+    
+    // 正常返回数组
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.error('[getDiscoverFeed] Request failed:', error);
+    // ✅ 不 throw，返回空数组
+    return [];
+  }
+};
 

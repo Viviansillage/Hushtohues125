@@ -32,15 +32,22 @@ const mapHistory = (item: ApiHistoryItem): ChatHistory => ({
 });
 
 const mapPost = (post: ApiCommunityPost): Post => ({
-  ...post,
-  timestamp: new Date(post.timestamp)
+  id: post.id,  // ✅ ONLY use community_posts.id
+  title: post.title,
+  author: post.author,
+  imageUrl: post.imageUrl || '',
+  content: '',  // Discover list doesn't include content
+  likes: post.likes,
+  comments: post.comments,
+  timestamp: new Date(post.timestamp),
+  tags: post.tags
 });
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<
     'chat' | 'archive' | 'chat-history' | 'chat-history-detail' | 'community' | 'profile' | 'community-detail'
   >('chat');
-  const [viewingCommunity, setViewingCommunity] = useState<string | null>(null);
+  const [viewingCommunityPost, setViewingCommunityPost] = useState<string | null>(null);  // ✅ 改为 postId
   const [viewingHistorySession, setViewingHistorySession] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
@@ -58,11 +65,10 @@ export default function App() {
     let isMounted = true;
     const load = async () => {
       try {
-        const [profileData, historyData, postData, communityMeta, sessionsData] = await Promise.all([
+        // ✅ 分开处理，避免 community 错误影响其他数据加载
+        const [profileData, historyData, sessionsData] = await Promise.all([
           getProfile(),
           getHistory(),
-          getDiscoverFeed(),
-          getCommunityMeta(),
           getChatSessions()
         ]);
 
@@ -70,17 +76,34 @@ export default function App() {
 
         setProfile(profileData);
         setHistory(historyData.map(mapHistory));
-        setCommunityPosts(postData.map(mapPost));
-        setFollowedCommunities(communityMeta.followed);
-        setRecommendedCommunities(communityMeta.recommended);
-        setLikedPosts(communityMeta.user.likes.filter((id) => !id.includes(':')));
-        setBookmarkedPosts(communityMeta.user.bookmarks);
         
         // 加载聊天会话
         setChatSessions(sessionsData.map(s => ({
           ...s,
           timestamp: new Date(s.timestamp)
         })));
+
+        // ✅ Community 数据单独加载，不影响主流程
+        try {
+          const [postData, communityMeta] = await Promise.all([
+            getDiscoverFeed(),
+            getCommunityMeta()
+          ]);
+
+          if (!isMounted) return;
+
+          setCommunityPosts(postData.map(mapPost));
+          setFollowedCommunities(communityMeta.followed);
+          setRecommendedCommunities(communityMeta.recommended);
+          setLikedPosts(communityMeta.user.likes.filter((id) => !id.includes(':')));
+          setBookmarkedPosts(communityMeta.user.bookmarks);
+        } catch (communityError) {
+          console.error('[App] Failed to load community data (non-blocking):', communityError);
+          // ✅ 设置默认值，避免 undefined
+          setCommunityPosts([]);
+          setFollowedCommunities([]);
+          setRecommendedCommunities([]);
+        }
       } catch (error) {
         console.error('Failed to load app data', error);
       }
@@ -92,8 +115,8 @@ export default function App() {
     };
   }, []);
 
-  const handleNavigateToCommunity = (communityName: string) => {
-    setViewingCommunity(communityName);
+  const handleNavigateToCommunity = (postId: string) => {
+    setViewingCommunityPost(postId);
     setCurrentPage('community-detail');
   };
 
@@ -152,6 +175,17 @@ export default function App() {
         ...updates,
         timestamp: updates.timestamp ? updates.timestamp.toISOString() : undefined
       } as Partial<ApiHistoryItem>);
+      
+      // ✅ If isPublic was changed, refresh Discover feed
+      if (updates.isPublic !== undefined) {
+        console.log('[App] Refreshing Discover feed after isPublic change');
+        try {
+          const postData = await getDiscoverFeed();
+          setCommunityPosts(postData.map(mapPost));
+        } catch (error) {
+          console.error('[App] Failed to refresh Discover feed:', error);
+        }
+      }
     } catch (error) {
       console.error('Failed to update history', error);
     }
@@ -229,27 +263,13 @@ export default function App() {
     }
   };
 
-  const publicHistoryPosts: Post[] = useMemo(() => {
-    return history
-      .filter((item) => item.isPublic)
-      .map((item) => ({
-        id: item.id,
-        title: item.title,
-        author: { name: profile?.userName || 'You' },
-        imageUrl: item.previewImages[0] || 'https://via.placeholder.com/800x450',
-        content: item.lastMessage,
-        likes: 0,
-        comments: 0,
-        timestamp: item.timestamp,
-        tags: item.tags
-      }));
-  }, [history, profile?.userName]);
-
+  // ✅ Discover feed: ONLY show community_posts (no history-derived posts)
+  // History is a separate concept - only published sessions appear in community_posts
   const allDiscoverPosts = useMemo(() => {
-    return [...communityPosts, ...publicHistoryPosts].sort(
+    return communityPosts.sort(
       (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
     );
-  }, [communityPosts, publicHistoryPosts]);
+  }, [communityPosts]);
 
   return (
     <>
@@ -542,9 +562,9 @@ export default function App() {
               onBack={() => setCurrentPage('chat-history')} 
             />
           )}
-          {currentPage === 'community-detail' && viewingCommunity && (
+          {currentPage === 'community-detail' && viewingCommunityPost && (
             <CommunityDetailPage 
-              communityName={viewingCommunity} 
+              postId={viewingCommunityPost} 
               onBack={() => {
                 setCurrentPage('community');
                 // 返回时刷新 Following 列表

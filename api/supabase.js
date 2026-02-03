@@ -88,9 +88,13 @@ let defaultProfileId = null;
 /**
  * 从请求中解析 actor（用户或访客）
  * @param {Request} req - HTTP 请求对象
- * @returns {{ type: 'user' | 'guest', id: string }} actor 对象
+ * @param {object} options - 配置选项
+ * @param {boolean} options.requireGuestId - 是否强制要求 guest_id（写操作应设为 true）
+ * @returns {{ type: 'user' | 'guest', id: string | null, name: string, error?: string }} actor 对象
  */
-export function getActor(req) {
+export function getActor(req, options = {}) {
+  const { requireGuestId = false } = options;
+  
   // 优先检查是否有已登录用户（未来扩展 Supabase Auth）
   // const userId = req.headers['x-user-id'];
   // if (userId) {
@@ -105,13 +109,23 @@ export function getActor(req) {
   }
   
   if (guestId) {
-    return { type: 'guest', id: guestId };
+    return { type: 'guest', id: guestId, name: `Guest-${guestId.slice(-6)}` };
   }
   
-  // 降级：生成临时 guest ID（不推荐，应由前端生成）
-  const tempGuestId = `guest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  console.warn('No guest_id in request, using temporary:', tempGuestId);
-  return { type: 'guest', id: tempGuestId };
+  // ✅ 关键修复：对于写操作，禁止生成临时 guest ID
+  if (requireGuestId) {
+    console.error('[getActor] Missing required X-Guest-ID header for write operation');
+    return { 
+      type: 'guest', 
+      id: null, 
+      name: 'Anonymous',
+      error: 'MISSING_GUEST_ID' 
+    };
+  }
+  
+  // ✅ 对于只读操作，允许匿名但不生成新 ID
+  console.warn('[getActor] No X-Guest-ID header, returning anonymous actor');
+  return { type: 'guest', id: null, name: 'Anonymous' };
 }
 
 export async function getOrCreateDefaultProfile() {
@@ -193,7 +207,7 @@ export async function getCommunityPosts() {
   const { data, error } = await supabase
     .from('community_posts')
     .select('*')
-    .order('timestamp', { ascending: false });
+    .order('created_at', { ascending: false });  // ✅ Use created_at
 
   if (error) throw error;
   
@@ -205,7 +219,7 @@ export async function getCommunityPosts() {
     content: post.content,
     likes: post.likes || 0,
     comments: post.comments || 0,
-    timestamp: post.timestamp,
+    timestamp: post.created_at,  // ✅ Use created_at
     tags: post.tags || []
   }));
 }

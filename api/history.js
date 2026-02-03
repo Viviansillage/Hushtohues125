@@ -16,6 +16,7 @@ async function parseBody(req) {
 
 export default async function handler(req, res) {
   const requestId = `hist-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  console.log(`[history.js] Handler called: ${req.method} ${req.url}`);
   
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
@@ -76,6 +77,7 @@ export default async function handler(req, res) {
           try {
             return {
               id: item.id,
+              sessionId: item.session_id,  // ✅ 关键：返回 sessionId
               title: item.title || 'Untitled',
               messageCount: item.message_count || 0,
               lastMessage: item.last_message || '',
@@ -199,7 +201,7 @@ async function handleHistoryById(req, res, id) {
       // 验证所有权
       const { data: item } = await supabase
         .from('chat_history')
-        .select('owner_type, owner_id')
+        .select('*, session_id')
         .eq('id', id)
         .single();
 
@@ -211,7 +213,7 @@ async function handleHistoryById(req, res, id) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
-      // 更新
+      // 更新 chat_history
       const updates = {};
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
@@ -229,10 +231,102 @@ async function handleHistoryById(req, res, id) {
         return res.status(500).json({ error: 'Failed to update', details: error.message });
       }
 
+      // ========== Reference-Only Logic: 同步到 community_posts ==========
+      if (body.isPublic !== undefined && item.session_id) {
+        if (body.isPublic === true) {
+          // ✅ 发布时强制要求 guest ID
+          const publishActor = getActor(req, { requireGuestId: true });
+          
+          if (publishActor.error === 'MISSING_GUEST_ID' || !publishActor.id) {
+            console.error('[history/[id]] ❌ Cannot publish: missing X-Guest-ID header');
+            return res.status(401).json({ 
+              error: 'Authentication required',
+              details: 'X-Guest-ID header is required for publishing. Please refresh the page.'
+            });
+          }
+          
+          console.log('[history/[id]] 📤 Publishing to community:', {
+            session_id: item.session_id,
+            guestId: publishActor.id?.slice(0, 8),
+            title: data.title
+          });
+          
+          // Public = true: 在 community_posts 中 upsert 引用记录（不复制内容）
+          const coverImage = Array.isArray(data.preview_images) && data.preview_images.length > 0
+            ? data.preview_images[0]
+            : null;
+          
+          // ✅ 获取 author_name
+          let authorName = publishActor.name || `Guest-${publishActor.id.slice(-6)}`;
+          if (publishActor.type === 'user') {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('display_name, user_name')
+              .eq('id', publishActor.id)
+              .maybeSingle();
+            authorName = profile?.display_name || profile?.user_name || 'User';
+          }
+
+          const { data: publishedPost, error: upsertError } = await supabase
+            .from('community_posts')
+            .upsert({
+              session_id: item.session_id,
+              history_id: item.id,  // ✅ 存储 chat_history.id 用于反查
+              author_type: publishActor.type || 'guest',
+              author_id: publishActor.id,
+              author_name: authorName,
+              is_public: true,
+              cover_image_url: coverImage || null,
+              title: data.title || 'Untitled',
+              tags: data.tags || [],
+              created_at: item.created_at || new Date().toISOString(),  // ✅ Use item.created_at from initial query
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'session_id',
+              ignoreDuplicates: false  // 更新已存在的记录
+            })
+            .select('id, session_id')
+            .single();
+
+          if (upsertError) {
+            console.error('[history/[id]] ❌ Failed to publish to community:', upsertError);
+            return res.status(500).json({ 
+              error: 'Failed to publish to community',
+              details: upsertError.message
+            });
+          }
+          
+          console.log('[history/[id]] ✅ Published to community:', {
+            communityPostId: publishedPost.id,  // ✅ Return this to frontend
+            session_id: publishedPost.session_id,
+            history_id: item.id
+          });
+          
+          // ✅ Important: Return communityPostId in response
+          data.communityPostId = publishedPost.id;
+        } else {
+          // Public = false: 标记为不公开（保留记录用于审计）
+          console.log('[history/[id]] 📥 Unpublishing from community:', item.session_id);
+          
+          const { error: unpublishError } = await supabase
+            .from('community_posts')
+            .update({ is_public: false, updated_at: new Date().toISOString() })
+            .eq('session_id', item.session_id);
+
+          if (unpublishError) {
+            console.error('[history/[id]] ❌ Failed to unpublish from community:', unpublishError);
+          } else {
+            console.log('[history/[id]] ✅ Unpublished from community:', item.session_id);
+          }
+        }
+      }
+      // ========== End Reference-Only Logic ==========
+
       console.log('[history/[id]] Updated:', id);
 
       return res.status(200).json({
         id: data.id,
+        sessionId: data.session_id,  // ✅ 返回 sessionId
         title: data.title,
         messageCount: data.message_count,
         lastMessage: data.last_message,
@@ -262,6 +356,7 @@ async function handleHistoryById(req, res, id) {
 
       return res.status(200).json({
         id: data.id,
+        sessionId: data.session_id,  // ✅ 返回 sessionId
         title: data.title,
         messageCount: data.message_count,
         lastMessage: data.last_message,

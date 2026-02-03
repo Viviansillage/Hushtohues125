@@ -903,7 +903,7 @@ export default async function handler(req, res) {
 
     // ========== GET /api/chat?action=load - 从DB加载消息 ==========
     if (req.method === 'GET' && action === 'load') {
-      const { sessionId } = req.query;
+      const sessionId = url.searchParams.get('sessionId');  // ✅ 修复：使用 URL params
       
       if (!sessionId) {
         return res.status(400).json({ error: 'Missing sessionId parameter' });

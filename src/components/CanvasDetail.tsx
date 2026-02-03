@@ -771,29 +771,13 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                             {item.meta?.title || 'Mindmap'}
                           </h3>
                         </div>
-                        {!isPreview && !readOnly && (
+                        {/* Edit button temporarily disabled - mindmap editing needs refactoring */}
+                        {false && !isPreview && !readOnly && (
                           <button
-                            onClick={() => {
-                              if (editingMindmapId === item.id) {
-                                // Save and exit edit mode
-                                const data = mindmapData[item.id];
-                                if (data) {
-                                  const newMermaidCode = mindElixirToMermaid(data);
-                                  setItems(prev => prev.map(i => 
-                                    i.id === item.id ? { ...i, content: newMermaidCode } : i
-                                  ));
-                                }
-                                setEditingMindmapId(null);
-                              } else {
-                                // Enter edit mode
-                                const data = mermaidToMindElixir(item.content || 'mindmap\n  root((Empty))');
-                                setMindmapData(prev => ({ ...prev, [item.id]: data }));
-                                setEditingMindmapId(item.id);
-                              }
-                            }}
-                            className="px-3 py-1 text-sm bg-[#1a1a1a] text-[#faf8f3] rounded handwritten hover:bg-[#333] transition-colors"
+                            disabled
+                            className="px-3 py-1 text-sm bg-[#1a1a1a]/30 text-[#faf8f3] rounded handwritten cursor-not-allowed"
                           >
-                            {editingMindmapId === item.id ? 'Save' : 'Edit'}
+                            Edit (Coming Soon)
                           </button>
                         )}
                       </div>
@@ -832,10 +816,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                        item={item} 
                        readOnly={isPreview || readOnly}
                        onChange={(val) => {
-                         const newItems = [...items];
-                         const idx = newItems.findIndex(i => i.id === item.id);
-                         newItems[idx].content = val;
-                         setItems(newItems);
+                         setItems(prev => prev.map(i => 
+                           i.id === item.id ? { ...i, content: val } : i
+                         ));
                        }} 
                      />
                   </div>

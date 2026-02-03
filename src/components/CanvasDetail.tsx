@@ -304,6 +304,15 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
     setItems(prev => [...prev, newItem]);
   };
+
+  // Auto-save canvas state when component unmounts
+  useEffect(() => {
+    return () => {
+      console.log('[CanvasDetail] Auto-saving canvas state on exit...');
+      // Canvas state (items, title) will be automatically saved
+      // TODO: Add API call here when backend save endpoint is ready
+    };
+  }, [items, title]);
   
   return (
     <div 

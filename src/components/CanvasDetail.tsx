@@ -761,7 +761,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                           <button
                             onClick={() => {
                               if (editingMindmapId === item.id) {
-                                // 保存并退出编辑模式
+                                // Save and exit edit mode
                                 const data = mindmapData[item.id];
                                 if (data) {
                                   const newMermaidCode = mindElixirToMermaid(data);
@@ -771,7 +771,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                                 }
                                 setEditingMindmapId(null);
                               } else {
-                                // 进入编辑模式
+                                // Enter edit mode
                                 const data = mermaidToMindElixir(item.content || 'mindmap\n  root((Empty))');
                                 setMindmapData(prev => ({ ...prev, [item.id]: data }));
                                 setEditingMindmapId(item.id);
@@ -779,7 +779,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                             }}
                             className="px-3 py-1 text-sm bg-[#1a1a1a] text-[#faf8f3] rounded handwritten hover:bg-[#333] transition-colors"
                           >
-                            {editingMindmapId === item.id ? '保存' : '编辑'}
+                            {editingMindmapId === item.id ? 'Save' : 'Edit'}
                           </button>
                         )}
                       </div>
@@ -831,7 +831,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         ))}
         
         {!isPreview && !readOnly && (
-            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide transition-opacity`}>
+            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide z-[60]">
                 ( Double click empty space to add text )
             </div>
         )}

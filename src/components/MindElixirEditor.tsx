@@ -31,7 +31,7 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 初始化 MindElixir
+    // Initialize MindElixir
     const mind = new MindElixir({
       el: containerRef.current,
       direction: MindElixir.RIGHT,
@@ -39,8 +39,9 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
       contextMenu: true,
       toolBar: true,
       keypress: true,
-      locale: 'zh_CN',
+      locale: 'en',
       overflowHidden: false,
+      editable: true,
     });
 
     mind.init(data);

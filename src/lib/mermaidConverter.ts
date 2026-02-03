@@ -1,37 +1,37 @@
 import { MindMapData, MindNode } from '../components/MindElixirEditor';
 
 /**
- * 将 Mermaid mindmap 语法转换为 MindElixir 数据格式
+ * Convert Mermaid mindmap syntax to MindElixir data format
  */
 export function mermaidToMindElixir(mermaidCode: string): MindMapData {
   const lines = mermaidCode.split('\n').filter(line => line.trim());
   
-  // 跳过 "mindmap" 声明行
+  // Skip "mindmap" declaration line
   const contentLines = lines.slice(1).filter(line => line.trim());
   
   if (contentLines.length === 0) {
     return {
       nodeData: {
         id: 'root',
-        topic: '思维导图',
+        topic: 'Mindmap',
         root: true,
         children: []
       }
     };
   }
 
-  // 解析缩进层级
+  // Parse indent level
   const getIndentLevel = (line: string): number => {
     const match = line.match(/^(\s*)/);
     return match ? match[1].length : 0;
   };
 
-  // 提取节点文本（去除缩进和特殊字符）
+  // Extract node text (remove indent and special characters)
   const getNodeText = (line: string): string => {
     return line.trim().replace(/^[)(\[\]]+|[)(\[\]]+$/g, '').trim();
   };
 
-  // 构建节点树
+  // Build node tree
   interface ParseNode {
     id: string;
     topic: string;
@@ -53,7 +53,7 @@ export function mermaidToMindElixir(mermaidCode: string): MindMapData {
       children: []
     };
 
-    // 找到父节点
+    // Find parent node
     while (stack.length > 0 && stack[stack.length - 1].level >= level) {
       stack.pop();
     }
@@ -67,7 +67,7 @@ export function mermaidToMindElixir(mermaidCode: string): MindMapData {
     stack.push(node);
   });
 
-  // 转换为 MindElixir 格式
+  // Convert to MindElixir format
   const convertNode = (node: ParseNode): MindNode => ({
     id: node.id,
     topic: node.topic,
@@ -75,7 +75,7 @@ export function mermaidToMindElixir(mermaidCode: string): MindMapData {
     expanded: true
   });
 
-  // 第一个节点作为根节点
+  // First node as root node
   const rootNode = nodes[0];
   
   return {
@@ -89,25 +89,27 @@ export function mermaidToMindElixir(mermaidCode: string): MindMapData {
 }
 
 /**
- * 将 MindElixir 数据格式转换回 Mermaid mindmap 语法
+ * Convert MindElixir data format to Mermaid mindmap syntax
  */
 export function mindElixirToMermaid(data: MindMapData): string {
   const lines: string[] = ['mindmap'];
   
-  const convertNode = (node: MindNode, indent: number = 0) => {
+  const convertNode = (node: MindNode | any, indent: number = 0) => {
     const indentStr = '  '.repeat(indent);
-    lines.push(`${indentStr}${node.topic}`);
+    const topic = node.topic || 'Node';
+    lines.push(`${indentStr}${topic}`);
     
     if (node.children && node.children.length > 0) {
-      node.children.forEach(child => convertNode(child, indent + 1));
+      node.children.forEach((child: MindNode | any) => convertNode(child, indent + 1));
     }
   };
 
-  // 根节点
-  lines.push(`  ${data.nodeData.topic}`);
+  // Root node
+  const rootTopic = data.nodeData?.topic || 'Mindmap';
+  lines.push(`  ${rootTopic}`);
   
-  // 子节点
-  if (data.nodeData.children) {
+  // Child nodes
+  if (data.nodeData?.children && data.nodeData.children.length > 0) {
     data.nodeData.children.forEach(child => convertNode(child, 2));
   }
 

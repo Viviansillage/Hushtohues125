@@ -216,6 +216,7 @@ async function handleHistoryById(req, res, id) {
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
       if (body.tags !== undefined) updates.tags = body.tags;
+      if (body.contentJson !== undefined) updates.content_json = body.contentJson;
 
       const { data, error } = await supabase
         .from('chat_history')

@@ -315,17 +315,19 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
     try {
       console.log('[CanvasDetail] Saving canvas state...');
+      console.log('[CanvasDetail] Items to save:', items.length, 'items');
+      console.log('[CanvasDetail] Title:', title);
       
-      // 将canvas items序列化保存到history item
+      // 将canvas items序列化保存到history item的content_json字段
       const canvasData = {
         items: items,
-        title: title
+        canvasTitle: title,
+        savedAt: new Date().toISOString()
       };
 
       await updateHistoryItem(item.id, {
         title: title,
-        // 将canvas数据保存到content字段（可以根据实际后端schema调整）
-        content: JSON.stringify(canvasData),
+        contentJson: canvasData,  // 使用contentJson字段保存canvas数据
         tags: item.tags || [],
         isPublic: item.isPublic || false,
         timestamp: new Date().toISOString()

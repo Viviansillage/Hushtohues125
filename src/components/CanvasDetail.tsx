@@ -10,6 +10,7 @@ export interface CanvasItem {
   title: string;
   images: string[];
   mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
+  imageArtifacts?: Array<{ imageUrl: string; title?: string; summary?: string }>;  // ✅ 新增：完整的image信息
   content: string;
   tags?: string[];
   isPublic?: boolean;
@@ -214,10 +215,14 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     const generatedItems: DraggableItem[] = [];
     const hasImages = item.images && item.images.length > 0;
     const imagesToLoad = hasImages ? item.images : [];
+    const imageArtifactsData = item.imageArtifacts || [];  // ✅ 获取完整的image信息
     const mindmapsToLoad = item.mindmaps || [];
     
     // Stack images vertically on the left
     imagesToLoad.forEach((imgUrl, index) => {
+      // ✅ 查找对应的title和summary
+      const artifactData = imageArtifactsData.find(a => a.imageUrl === imgUrl);
+      
       generatedItems.push({
         id: `img-${index}`,
         type: 'image',
@@ -226,7 +231,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         y: 160 + (index * 420),   // Vertical spacing - 420px per image
         width: 400,
         height: 'auto',
-        zIndex: index + 1
+        zIndex: index + 1,
+        meta: artifactData ? { title: artifactData.title, summary: artifactData.summary } : undefined  // ✅ 添加meta信息
       });
     });
 
@@ -821,6 +827,25 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                             filter: 'url(#hand-drawn-border)'
                         }}
                     ></div>
+                    
+                    {/* ✅ Title and Summary */}
+                    {(item.meta?.title || item.meta?.summary) && (
+                      <div className="px-4 pt-3 pb-2">
+                        {item.meta?.title && (
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">🎨</span>
+                            <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
+                              {item.meta.title}
+                            </h3>
+                          </div>
+                        )}
+                        {item.meta?.summary && (
+                          <p className="text-sm text-[#6d6d6d] handwritten line-clamp-2">
+                            {item.meta.summary}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     
                     {/* Image Content */}
                     <div className="w-full h-full p-2 overflow-hidden" style={{ borderRadius: '2px' }}>

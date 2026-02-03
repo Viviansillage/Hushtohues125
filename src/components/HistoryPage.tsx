@@ -207,12 +207,14 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
       const artifacts = selectedChatDetail.artifacts || [];
       console.log('[HistoryPage] Rendering detail with artifacts:', artifacts);
       
-      const imageArtifacts = artifacts.filter(
-        (artifact: any) => (artifact.type === 'image' || artifact.kind === 'image')
-      );
-      const allImages = imageArtifacts.map(
-        (artifact: any) => artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url
-      ).filter(Boolean);
+      const imageArtifacts = artifacts
+        .filter((artifact: any) => (artifact.type === 'image' || artifact.kind === 'image'))
+        .map((artifact: any) => ({
+          imageUrl: artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url,
+          title: artifact.data?.title || artifact.payload?.title,
+          summary: artifact.data?.summary || artifact.payload?.summary
+        }))
+        .filter((img: any) => !!img.imageUrl);
 
       const mindmapArtifacts = artifacts
         .filter((artifact: any) => artifact.type === 'mindmap' || artifact.kind === 'mindmap')
@@ -232,19 +234,22 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         }))
         .filter((mindmap: any) => !!mindmap.mermaidCode);
 
-      // Fallback: 如果 artifacts 为空，使用 previewImages
-      const imagesToShow = allImages.length > 0 ? allImages : selectedChatDetail.previewImages;
+      // Fallback: 如果 artifacts 为空，使用 previewImages（只有URL，没有title/summary）
+      const imagesToShow = imageArtifacts.length > 0 
+        ? imageArtifacts.map(img => img.imageUrl)
+        : selectedChatDetail.previewImages;
 
       return (
         <CanvasDetail 
           item={{
             id: selectedChatDetail.id,
             title: selectedChatDetail.title,
-            images: imagesToShow,  // 使用从 artifacts 提取的所有图片
+            images: imagesToShow,
             mindmaps: mindmapArtifacts,
             content: selectedChatDetail.lastMessage,
             tags: selectedChatDetail.tags,
-            isPublic: selectedChatDetail.isPublic
+            isPublic: selectedChatDetail.isPublic,
+            imageArtifacts  // ✅ 传递完整的image信息（包含title/summary）
           }}
           onClose={() => setSelectedChatId(null)} 
         />

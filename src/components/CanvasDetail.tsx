@@ -274,7 +274,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     if (readOnly || isPreview) return;
     
     // Only trigger if clicking directly on the canvas background
-    if (e.target !== e.currentTarget && (e.target as HTMLElement).id !== 'canvas-area') return;
+    const targetId = (e.target as HTMLElement).id;
+    if (e.target !== e.currentTarget && targetId !== 'canvas-area' && targetId !== 'canvas-inner') return;
 
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -646,7 +647,12 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
       >
         {/* 内层容器：提供足够高度触发滚动 */}
-        <div className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
+        <div 
+          id="canvas-inner" 
+          className="relative w-full" 
+          style={{ minHeight: `${calculatedMinHeight}px` }}
+          onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
+        >
         {/* Centered Title - Draggable */}
         <motion.div
            drag={!isPreview && !readOnly}
@@ -783,14 +789,14 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                           </button>
                         )}
                       </div>
-                      <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
+                      <div className="bg-white rounded-lg p-3 overflow-x-auto" style={{ minHeight: editingMindmapId === item.id ? '600px' : '200px' }}>
                         {editingMindmapId === item.id ? (
                           <MindElixirEditor
+                            key={item.id}
                             data={mindmapData[item.id]}
                             onDataChange={(data) => {
                               setMindmapData(prev => ({ ...prev, [item.id]: data }));
                             }}
-                            className="min-h-[400px]"
                           />
                         ) : (
                           <MermaidMindmap
@@ -829,14 +835,15 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             </Resizable>
           </motion.div>
         ))}
-        
-        {!isPreview && !readOnly && (
-            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide z-[60]">
-                ( Double click empty space to add text )
-            </div>
-        )}
         </div>
       </div>
+      
+      {/* Canvas Caption - Outside scroll container for proper fixed positioning */}
+      {!isPreview && !readOnly && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide z-[60]">
+          ( Double click empty space to add text )
+        </div>
+      )}
     </div>
   );
 };

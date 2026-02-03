@@ -27,9 +27,10 @@ interface MindElixirEditorProps {
 export function MindElixirEditor({ data, onDataChange, className = '' }: MindElixirEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mindRef = useRef<any>(null);
+  const initializedRef = useRef<boolean>(false);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || initializedRef.current) return;
 
     // Initialize MindElixir
     const mind = new MindElixir({
@@ -42,7 +43,10 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
       locale: 'en',
       overflowHidden: false,
       editable: true,
+      allowUndo: true,
     });
+
+    initializedRef.current = true;
 
     mind.init(data);
     mindRef.current = mind;
@@ -87,6 +91,7 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
       if (mindRef.current) {
         mindRef.current = null;
       }
+      initializedRef.current = false;
     };
   }, []);
 
@@ -101,7 +106,7 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
     <div 
       ref={containerRef} 
       className={`mind-elixir-container ${className}`}
-      style={{ width: '100%', height: '100%', minHeight: '500px' }}
+      style={{ width: '100%', height: '100%', minHeight: '600px' }}
     />
   );
 }

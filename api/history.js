@@ -259,19 +259,34 @@ async function handleHistoryById(req, res, id) {
           // ✅ 获取 author_name
           let authorName = publishActor.name || `Guest-${publishActor.id.slice(-6)}`;
           if (publishActor.type === 'user') {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('display_name, user_name')
-              .eq('id', publishActor.id)
-              .maybeSingle();
-            authorName = profile?.display_name || profile?.user_name || 'User';
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('display_name, user_name')
+                .eq('id', publishActor.id)
+                .maybeSingle();
+              authorName = profile?.display_name || profile?.user_name || 'User';
+            } catch (profileError) {
+              console.warn('[history/[id]] Failed to fetch profile, using default name:', profileError);
+            }
           }
+
+          // ✅ 确保 created_at 有值
+          const createdAt = item.created_at || item.timestamp || new Date().toISOString();
+          
+          console.log('[history/[id]] Upserting to community_posts:', {
+            session_id: item.session_id,
+            author_type: publishActor.type || 'guest',
+            author_id: publishActor.id,
+            author_name: authorName,
+            title: data.title || 'Untitled',
+            created_at: createdAt
+          });
 
           const { data: publishedPost, error: upsertError } = await supabase
             .from('community_posts')
             .upsert({
               session_id: item.session_id,
-              history_id: item.id,  // ✅ 存储 chat_history.id 用于反查
               author_type: publishActor.type || 'guest',
               author_id: publishActor.id,
               author_name: authorName,
@@ -279,7 +294,7 @@ async function handleHistoryById(req, res, id) {
               cover_image_url: coverImage || null,
               title: data.title || 'Untitled',
               tags: data.tags || [],
-              created_at: item.created_at || new Date().toISOString(),  // ✅ Use item.created_at from initial query
+              created_at: createdAt,
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'session_id',
@@ -297,9 +312,8 @@ async function handleHistoryById(req, res, id) {
           }
           
           console.log('[history/[id]] ✅ Published to community:', {
-            communityPostId: publishedPost.id,  // ✅ Return this to frontend
-            session_id: publishedPost.session_id,
-            history_id: item.id
+            communityPostId: publishedPost.id,
+            session_id: publishedPost.session_id
           });
           
           // ✅ Important: Return communityPostId in response

@@ -308,13 +308,16 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Handle close with auto-save
   const handleClose = async () => {
+    console.log('[CanvasDetail] handleClose called, readOnly:', readOnly);
+    
     if (readOnly) {
       onClose();
       return;
     }
 
     try {
-      console.log('[CanvasDetail] Saving canvas state...');
+      console.log('[CanvasDetail] Starting save process...');
+      console.log('[CanvasDetail] Item ID:', item.id);
       console.log('[CanvasDetail] Items to save:', items.length, 'items');
       console.log('[CanvasDetail] Title:', title);
       
@@ -325,20 +328,42 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         savedAt: new Date().toISOString()
       };
 
-      await updateHistoryItem(item.id, {
+      console.log('[CanvasDetail] Canvas data prepared:', canvasData);
+      
+      const updatePayload = {
         title: title,
         contentJson: canvasData,  // 使用contentJson字段保存canvas数据
         tags: item.tags || [],
         isPublic: item.isPublic || false,
         timestamp: new Date().toISOString()
+      };
+      
+      console.log('[CanvasDetail] Calling updateHistoryItem with payload:', updatePayload);
+      
+      const result = await updateHistoryItem(item.id, updatePayload);
+      
+      console.log('[CanvasDetail] API response:', result);
+      console.log('[CanvasDetail] Canvas saved successfully!');
+      
+      toast.success('Canvas saved successfully', {
+        duration: 2000,
       });
       
-      toast.success('Canvas saved successfully');
-      console.log('[CanvasDetail] Canvas saved successfully');
+      // 等待toast显示后再关闭
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       console.error('[CanvasDetail] Failed to save canvas:', error);
-      toast.error('Failed to save canvas');
+      if (error instanceof Error) {
+        console.error('[CanvasDetail] Error message:', error.message);
+        console.error('[CanvasDetail] Error stack:', error.stack);
+      }
+      toast.error(`Failed to save canvas: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+        duration: 3000,
+      });
+      // 即使保存失败也等待一下让用户看到错误消息
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } finally {
+      console.log('[CanvasDetail] Closing canvas...');
       onClose();
     }
   };

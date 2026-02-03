@@ -20,6 +20,11 @@ export interface CanvasItem {
     likes: number;
     comments: number;
   };
+  contentJson?: {
+    items?: DraggableItem[];
+    canvasTitle?: string;
+    savedAt?: string;
+  };
 }
 
 export interface DraggableItem {
@@ -161,7 +166,7 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
 };
 
 export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailProps) => {
-  const [title, setTitle] = useState(item.title);
+  const [title, setTitle] = useState(item.contentJson?.canvasTitle || item.title);
   // Default isPreview to readOnly (true in community view, false in archive edit)
   const [isPreview, setIsPreview] = useState(readOnly);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
@@ -181,6 +186,14 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   // Initialize items
   const [items, setItems] = useState<DraggableItem[]>(() => {
+    // 优先从contentJson恢复保存的canvas状态
+    if (item.contentJson?.items && item.contentJson.items.length > 0) {
+      console.log('[CanvasDetail] Restoring canvas from saved state:', item.contentJson.items.length, 'items');
+      return item.contentJson.items;
+    }
+
+    // 如果没有保存的状态，生成默认items
+    console.log('[CanvasDetail] Generating default canvas items');
     const generatedItems: DraggableItem[] = [];
     const hasImages = item.images && item.images.length > 0;
     const imagesToLoad = hasImages ? item.images : [];

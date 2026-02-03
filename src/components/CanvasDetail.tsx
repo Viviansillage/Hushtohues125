@@ -90,8 +90,17 @@ const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableIte
   
   useLayoutEffect(() => {
     if (textareaRef.current) {
+      // 保存当前光标位置
+      const selectionStart = textareaRef.current.selectionStart;
+      const selectionEnd = textareaRef.current.selectionEnd;
+      
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      
+      // 恢复光标位置
+      if (document.activeElement === textareaRef.current) {
+        textareaRef.current.setSelectionRange(selectionStart, selectionEnd);
+      }
     }
   }, [item.content, item.width]);
 
@@ -109,6 +118,7 @@ const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableIte
         minHeight: '3rem'
       }}
       onPointerDown={(e) => e.stopPropagation()}
+      autoFocus={!readOnly && item.content === 'Type something...'}
     />
   );
 };
@@ -269,14 +279,18 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   const handleCanvasDoubleClick = (e: React.MouseEvent) => {
     if (readOnly || isPreview) return;
     
-    // Only trigger if clicking directly on the canvas background
-    if (e.target !== e.currentTarget && (e.target as HTMLElement).id !== 'canvas-area') return;
+    // Only trigger if clicking directly on the canvas background (not on draggable items)
+    const target = e.target as HTMLElement;
+    // Check if clicked on canvas area or its direct child container
+    const isCanvasArea = target.id === 'canvas-area' || target.id === 'canvas-inner-area' || 
+                        target === e.currentTarget || target.parentElement?.id === 'canvas-area';
+    if (!isCanvasArea) return;
 
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = e.clientX - rect.left + (containerRef.current?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (containerRef.current?.scrollTop || 0);
 
     const newItem: DraggableItem = {
       id: `txt_${Date.now()}`,
@@ -642,7 +656,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
       >
         {/* 内层容器：提供足够高度触发滚动 */}
-        <div className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
+        <div id="canvas-inner-area" className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
         {/* Centered Title - Draggable */}
         <motion.div
            drag={!isPreview && !readOnly}
@@ -675,13 +689,21 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             key={item.id}
             drag={!isPreview && !readOnly}
             dragMomentum={false}
+            dragElastic={0}
             onDragStart={() => !isPreview && !readOnly && bringToFront(item.id)}
-            initial={{ x: item.x, y: item.y }}
+            onDragEnd={(e, info) => {
+              if (isPreview || readOnly) return;
+              setItems(prev => prev.map(i => 
+                i.id === item.id 
+                  ? { ...i, x: i.x + info.offset.x, y: i.y + info.offset.y }
+                  : i
+              ));
+            }}
             style={{ 
                 position: 'absolute', 
                 zIndex: item.zIndex,
-                top: 0,
-                left: 0
+                x: item.x,
+                y: item.y
             }}
             className="group"
           >

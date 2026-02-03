@@ -47,6 +47,34 @@ export function MindElixirEditor({ data, onDataChange, className = '' }: MindEli
     mind.init(data);
     mindRef.current = mind;
 
+    // Replace Chinese menu text with English
+    setTimeout(() => {
+      const replaceText = (selector: string, translations: Record<string, string>) => {
+        document.querySelectorAll(selector).forEach((el) => {
+          const text = el.textContent?.trim();
+          if (text && translations[text]) {
+            el.textContent = translations[text];
+          }
+        });
+      };
+
+      const menuTranslations = {
+        '插入子节点': 'Add Child Node',
+        '插入父节点': 'Add Parent Node',
+        '插入同级节点': 'Add Sibling Node',
+        '删除节点': 'Delete Node',
+        '专注': 'Focus',
+        '取消专注': 'Unfocus',
+        '上移': 'Move Up',
+        '下移': 'Move Down',
+        '摘要': 'Summary',
+        '连接': 'Link',
+        '双向连接': 'Bi-directional Link'
+      };
+
+      replaceText('.mind-elixir-toolbar button, .context-menu button', menuTranslations);
+    }, 100);
+
     // 监听数据变化
     if (onDataChange) {
       mind.bus.addListener('operation', () => {

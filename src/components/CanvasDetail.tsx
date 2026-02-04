@@ -795,7 +795,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                }}
                onMouseDown={(e) => e.stopPropagation()}
              />
-             <div className="h-1 w-full mt-2 relative overflow-visible">
+             <div className="h-1 w-[135%] mt-2 relative overflow-visible">
                  <svg className="w-full h-4 overflow-visible absolute top-0 left-0 text-[#1a1a1a]" preserveAspectRatio="none">
                      <path d="M0,2 Q100,5 200,2 T400,2 T600,2 T800,2 T1000,2 V4 H0 Z" fill="currentColor" opacity="0.1" />
                      <path d="M0,2 Q100,0 200,2 T400,2 T600,2 T800,2 T1000,2" fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ filter: 'url(#hand-drawn)' }}/>
@@ -936,7 +936,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="absolute top-20 left-6 z-[90] pointer-events-auto no-print max-w-xs"
+            className="absolute top-20 left-6 z-[90] pointer-events-auto no-print max-w-[10rem]"
           >
             <div className="relative p-4">
               {/* Menu Background */}
@@ -961,7 +961,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
               </svg>
 
               <div className="relative z-10 flex flex-col gap-2">
-                <p className="text-xs text-[#4a4a4a] mb-2 handwritten">
+                <p className="text-sm text-[#4a4a4a] mb-2 handwritten">
                   You have unsaved changes. Do you want to save them before leaving?
                 </p>
 
@@ -970,7 +970,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                   onClick={handleSaveAndExit}
                   className="relative group/option flex items-center gap-2 p-2 transition-all hover:scale-105"
                 >
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 240 45" preserveAspectRatio="none">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 200 45" preserveAspectRatio="none">
                     <path 
                       d="M 8 25 C 8 10 40 3 140 5 C 240 7 272 10 272 25 C 272 40 240 47 140 45 C 40 43 8 40 8 25 Z"
                       fill="#1a1a1a" 
@@ -988,7 +988,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                   onClick={handleExitWithoutSaving}
                   className="relative group/option flex items-center gap-2 p-2 transition-all hover:scale-105"
                 >
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 240 45" preserveAspectRatio="none">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 200 45" preserveAspectRatio="none">
                     <path 
                       d="M 272 25 C 270 10 240 5 140 3 C 40 1 8 8 8 25 C 8 42 40 48 140 46 C 240 44 274 40 272 25 Z"
                       fill="none" 

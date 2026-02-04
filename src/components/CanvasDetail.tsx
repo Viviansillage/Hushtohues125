@@ -772,7 +772,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         <motion.div
            drag={!isPreview && !readOnly}
            dragMomentum={false}
-           className={`absolute left-[10%] top-12 z-[90] w-[80%] ${isPreview || readOnly ? '' : 'cursor-move'}`}
+           className={`absolute left-[5%] top-12 z-[90] w-[90%] ${isPreview || readOnly ? '' : 'cursor-move'}`}
            style={{ x: 0, y: 0 }}
         >
              <input 
@@ -788,7 +788,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                onMouseDown={(e) => e.stopPropagation()}
              />
              <div className="h-1 w-full mt-2 relative overflow-visible">
-                 <svg className="w-full h-4 overflow-visible absolute top-0 left-0 text-[#1a1a1a]" preserveAspectRatio="none">
+                 <svg className="w-full h-4 overflow-visible absolute top-0 left-0 text-[#1a1a1a]" preserveAspectRatio="none" viewBox="0 0 1000 4">
                      <path d="M0,2 Q100,5 200,2 T400,2 T600,2 T800,2 T1000,2 V4 H0 Z" fill="currentColor" opacity="0.1" />
                      <path d="M0,2 Q100,0 200,2 T400,2 T600,2 T800,2 T1000,2" fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ filter: 'url(#hand-drawn)' }}/>
                  </svg>
@@ -914,7 +914,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         ))}
         
         {!isPreview && !readOnly && (
-            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide transition-opacity`}>
+            <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 text-[#1a1a1a]/30 text-lg pointer-events-none handwritten tracking-wide transition-opacity z-[80]`}>
                 ( Double click empty space to add text )
             </div>
         )}
@@ -927,7 +927,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center"
+            className="fixed inset-0 bg-black/50 z-[200] flex items-start justify-start p-6"
             onClick={() => setShowExitConfirm(false)}
           >
             <motion.div
@@ -935,7 +935,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#faf8f3] p-8 max-w-md w-full mx-4 relative"
+              className="bg-[#faf8f3] p-6 max-w-sm w-full relative"
               style={{
                 border: '3px solid #1a1a1a',
                 borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px',

@@ -315,10 +315,12 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     setHasUnsavedChanges(currentState !== savedStateRef.current);
   }, [title, items]);
 
-  // 计算需要的最小画布高度（基于图片数量）
+  // 计算需要的最小画布高度（基于所有artifacts数量）
   const imageCount = item.images?.length || 0;
-  const calculatedMinHeight = imageCount > 0 
-    ? 160 + (imageCount * 420) + 200  // 起始位置 + (图片数 * 间距) + 底部留白
+  const mindmapCount = item.mindmaps?.length || 0;
+  const totalArtifacts = imageCount + mindmapCount;
+  const calculatedMinHeight = totalArtifacts > 0 
+    ? 160 + (totalArtifacts * 420) + 200  // 起始位置 + (总artifacts数 * 间距) + 底部留白
     : 2000;  // 默认高度
 
   const bringToFront = (id: string) => {

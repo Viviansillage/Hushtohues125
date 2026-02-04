@@ -970,9 +970,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                   onClick={handleSaveAndExit}
                   className="relative group/option flex items-center gap-2 p-2 transition-all hover:scale-105"
                 >
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 70 45" preserveAspectRatio="none">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 140 45" preserveAspectRatio="none">
                     <path 
-                      d="M 2.5 25 C 2.5 10 12.5 3 35 5 C 57.5 7 67.5 10 67.5 25 C 67.5 40 57.5 47 35 45 C 12.5 43 2.5 40 2.5 25 Z"
+                      d="M 5 25 C 5 10 25 3 70 5 C 115 7 135 10 135 25 C 135 40 115 47 70 45 C 25 43 5 40 5 25 Z"
                       fill="#1a1a1a" 
                       stroke="#1a1a1a" 
                       strokeWidth="2" 
@@ -988,9 +988,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                   onClick={handleExitWithoutSaving}
                   className="relative group/option flex items-center gap-2 p-2 transition-all hover:scale-105"
                 >
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 70 45" preserveAspectRatio="none">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 140 45" preserveAspectRatio="none">
                     <path 
-                      d="M 67.5 25 C 66.5 10 57.5 5 35 3 C 12.5 1 2.5 8 2.5 25 C 2.5 42 12.5 48 35 46 C 57.5 44 68.5 40 67.5 25 Z"
+                      d="M 135 25 C 133 10 115 5 70 3 C 25 1 5 8 5 25 C 5 42 25 48 70 46 C 115 44 137 40 135 25 Z"
                       fill="none" 
                       stroke="#1a1a1a" 
                       strokeWidth="2" 

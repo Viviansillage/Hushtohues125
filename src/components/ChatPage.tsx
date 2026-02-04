@@ -110,7 +110,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [artifactType, setArtifactType] = useState<string>('');
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
-  const [saveAllOnConfirm, setSaveAllOnConfirm] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -352,7 +351,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   // ✅ New Chat 按钮：调用 store 的 resetChat
   const handleNewChat = () => {
     console.log('handleNewChat clicked');
-    setSaveAllOnConfirm(false);
     setShowNewChatDialog(true);
   };
 
@@ -470,20 +468,10 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   };
 
   const confirmNewChat = async () => {
-    if (isSavingAll) return;
-
-    if (saveAllOnConfirm) {
-      setIsSavingAll(true);
-      const saved = await saveAllArtifactsInChat();
-      setIsSavingAll(false);
-      if (!saved) return;
-    }
-
     // ✅ 使用全局 store 的 resetChat
     resetChat();
     setInputValue('');
     setShowNewChatDialog(false);
-    setSaveAllOnConfirm(false);
     
     toast.success('Started a new chat!', { className: 'handwritten font-bold' });
     console.log('🆕 Started new chat with conversationId:', conversationId);
@@ -975,6 +963,38 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                   </div>
                   <span className="text-xs font-bold handwritten text-[#1a1a1a]">Image</span>
                 </button>
+
+                <button
+                  onClick={async () => {
+                    setIsSavingAll(true);
+                    await saveAllArtifactsInChat();
+                    setIsSavingAll(false);
+                  }}
+                  disabled={isSavingAll}
+                  className="flex flex-col items-center gap-2 group transition-transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="relative flex items-center justify-center w-12 h-12 sketch-btn">
+                    <svg
+                      viewBox="0 0 100 100"
+                      className="absolute inset-0 w-full h-full text-[#1a1a1a] group-hover:text-[#4a4a4a] transition-colors"
+                      style={{ filter: 'url(#hand-drawn)' }}
+                    >
+                      <path
+                        d="M 50 10 C 75 8 90 25 90 50 C 90 75 75 92 50 90 C 25 88 10 73 10 48 C 10 23 25 12 50 10"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <svg className="w-5 h-5 text-[#1a1a1a] relative z-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-bold handwritten text-[#1a1a1a]">{isSavingAll ? 'Saving...' : 'Save All'}</span>
+                </button>
               </div>
             </div>
           )}
@@ -1042,35 +1062,17 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowNewChatDialog(false)}
-                disabled={isSavingAll}
-                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] text-[#1a1a1a] hand-drawn-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] text-[#1a1a1a] hand-drawn-border transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmNewChat}
-                disabled={isSavingAll}
-                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d] hand-drawn-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-4 py-2 border-[2.5px] border-[#1a1a1a] bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d] hand-drawn-border transition-colors"
               >
-                {isSavingAll ? 'Saving...' : 'Confirm'}
-              </button>
-              <button
-                onClick={() => setSaveAllOnConfirm((prev) => !prev)}
-                disabled={isSavingAll}
-                className={`px-4 py-2 border-[2.5px] border-[#1a1a1a] hand-drawn-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                  saveAllOnConfirm
-                    ? 'bg-[#1a1a1a] text-[#f5f1e8] hover:bg-[#2d2d2d]'
-                    : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9]'
-                }`}
-              >
-                {saveAllOnConfirm ? 'Save All ✓' : 'Save All'}
+                Confirm
               </button>
             </div>
-            {saveAllOnConfirm && (
-              <p className="mt-3 text-xs text-[#1a1a1a] opacity-70">
-                Save all will run when you confirm.
-              </p>
-            )}
           </div>
         </div>
       )}

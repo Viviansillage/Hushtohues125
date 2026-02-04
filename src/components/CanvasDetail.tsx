@@ -9,8 +9,8 @@ export interface CanvasItem {
   id: string;
   title: string;
   images: string[];
-  mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
-  imageArtifacts?: Array<{ imageUrl: string; title?: string; summary?: string }>;  // ✅ 新增：完整的image信息
+  mindmaps?: Array<{ mermaidCode: string; summary?: string }>;
+  imageArtifacts?: Array<{ imageUrl: string; summary?: string }>;  // ✅ 只保留summary
   content: string;
   tags?: string[];
   isPublic?: boolean;
@@ -218,49 +218,70 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     const imageArtifactsData = item.imageArtifacts || [];  // ✅ 获取完整的image信息
     const mindmapsToLoad = item.mindmaps || [];
     
-    // Stack images vertically on the left
+    let currentY = 160;  // 起始Y坐标
+    
+    // Stack images vertically on the left, with text boxes on the right
     imagesToLoad.forEach((imgUrl, index) => {
-      // ✅ 查找对应的title和summary
+      // ✅ 查找对应的summary
       const artifactData = imageArtifactsData.find(a => a.imageUrl === imgUrl);
       
+      // 左侧：图片
       generatedItems.push({
         id: `img-${index}`,
         type: 'image',
         content: imgUrl,
-        x: 60 + (index % 2 * 10), // Slight zigzag offset
-        y: 160 + (index * 420),   // Vertical spacing - 420px per image
+        x: 60 + (index % 2 * 10),
+        y: currentY,
         width: 400,
         height: 'auto',
-        zIndex: index + 1,
-        meta: artifactData ? { title: artifactData.title, summary: artifactData.summary } : undefined  // ✅ 添加meta信息
+        zIndex: index * 2 + 1
       });
+      
+      // 右侧：对应的文本框（summary）
+      if (artifactData?.summary) {
+        generatedItems.push({
+          id: `txt-img-${index}`,
+          type: 'text',
+          content: artifactData.summary,
+          x: 520,
+          y: currentY,
+          width: 400,
+          height: 'auto',
+          zIndex: index * 2 + 2
+        });
+      }
+      
+      currentY += 420;  // 增加垂直间距
     });
 
     mindmapsToLoad.forEach((mindmap, index) => {
-      const positionIndex = imagesToLoad.length + index;
+      // 左侧：mindmap
       generatedItems.push({
         id: `mindmap-${index}`,
         type: 'mindmap',
         content: mindmap.mermaidCode,
-        x: 60 + (positionIndex % 2 * 10),
-        y: 160 + (positionIndex * 420),
+        x: 60 + (index % 2 * 10),
+        y: currentY,
         width: 420,
         height: 280,
-        zIndex: positionIndex + 1,
-        meta: { title: mindmap.title, summary: mindmap.summary }
+        zIndex: (imagesToLoad.length + index) * 2 + 1
       });
-    });
-
-    // Place text on the right, aligned with the top
-    generatedItems.push({
-      id: 'txt-main',
-      type: 'text',
-      content: item.content,
-      x: 520,
-      y: 160,
-      width: 400,
-      height: 'auto',
-      zIndex: generatedItems.length + 1
+      
+      // 右侧：对应的文本框（summary）
+      if (mindmap.summary) {
+        generatedItems.push({
+          id: `txt-mindmap-${index}`,
+          type: 'text',
+          content: mindmap.summary,
+          x: 520,
+          y: currentY,
+          width: 400,
+          height: 'auto',
+          zIndex: (imagesToLoad.length + index) * 2 + 2
+        });
+      }
+      
+      currentY += 420;  // 增加垂直间距
     });
 
     return generatedItems;
@@ -828,25 +849,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                         }}
                     ></div>
                     
-                    {/* ✅ Title and Summary */}
-                    {(item.meta?.title || item.meta?.summary) && (
-                      <div className="px-4 pt-3 pb-2">
-                        {item.meta?.title && (
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-lg">🎨</span>
-                            <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
-                              {item.meta.title}
-                            </h3>
-                          </div>
-                        )}
-                        {item.meta?.summary && (
-                          <p className="text-sm text-[#6d6d6d] handwritten line-clamp-2">
-                            {item.meta.summary}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    
                     {/* Image Content */}
                     <div className="w-full h-full p-2 overflow-hidden" style={{ borderRadius: '2px' }}>
                         <img 
@@ -875,21 +877,12 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                       }}
                     ></div>
                     <div className="relative z-10">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">🧠</span>
-                        <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
-                          {item.meta?.title || 'Mindmap'}
-                        </h3>
-                      </div>
                       <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
                         <MermaidMindmap
                           mermaidCode={item.content || 'mindmap\n  root((Empty))'}
                           id={item.id}
                         />
                       </div>
-                      {item.meta?.summary && (
-                        <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>
-                      )}
                     </div>
                   </div>
                 ) : (

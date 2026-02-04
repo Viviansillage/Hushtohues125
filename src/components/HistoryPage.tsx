@@ -211,7 +211,6 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         .filter((artifact: any) => (artifact.type === 'image' || artifact.kind === 'image'))
         .map((artifact: any) => ({
           imageUrl: artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url,
-          title: artifact.data?.title || artifact.payload?.title,
           summary: artifact.data?.summary || artifact.payload?.summary
         }))
         .filter((img: any) => !!img.imageUrl);
@@ -223,10 +222,6 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
             artifact.data?.mermaidCode ||
             artifact.payload?.mermaidCode ||
             artifact.payload?.structuredMindmap?.mermaidCode,
-          title:
-            artifact.data?.title ||
-            artifact.payload?.title ||
-            artifact.payload?.structuredMindmap?.title,
           summary:
             artifact.data?.summary ||
             artifact.payload?.summary ||

@@ -65,8 +65,8 @@ export default async function handler(req, res) {
 
       const messageCount = sessionMessages?.length || 0;
       
-      // ✅ 使用artifact的summary或title作为lastMessage的fallback
-      const artifactSummary = artifact.data?.summary || artifact.data?.title || '';
+      // ✅ 使用artifact的summary作为lastMessage的fallback
+      const artifactSummary = artifact.data?.summary || '';
       const lastMessage = sessionMessages?.[sessionMessages.length - 1]?.content 
         || artifactSummary 
         || `Saved ${artifact.type}`;
@@ -147,12 +147,12 @@ export default async function handler(req, res) {
         // ✅ 不存在：创建新archive
         console.log('[Archive Save] Creating new archive for session:', sessionId);
 
-        // ✅ 生成title：优先使用artifact的title，其次使用第一条用户消息
-        const artifactTitle = artifact.data?.title || '';
+        // ✅ 生成title：优先使用第一条用户消息，其次使用artifact的summary
         const userMessages = sessionMessages?.filter(m => m.sender === 'user') || [];
         const firstUserMsg = userMessages[0]?.content || '';
-        const title = artifactTitle.substring(0, 50) 
-          || firstUserMsg.substring(0, 50) 
+        const artifactSummary = artifact.data?.summary || '';
+        const title = firstUserMsg.substring(0, 50) 
+          || artifactSummary.substring(0, 50)
           || `Saved ${artifact.type} - ${new Date().toLocaleString()}`;
         
         // 提取图片预览

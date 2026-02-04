@@ -257,10 +257,12 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
               if (response.ok) {
                 const data = await response.json();
                 const detail = data.ok ? data.item : data;
-                // 更新父组件中的历史列表
-                if (detail.title !== selectedChatDetail.title) {
-                  onUpdateHistory(selectedChatId, { title: detail.title });
-                }
+                // 总是更新父组件中的历史列表，确保标题同步
+                onUpdateHistory(selectedChatId, { title: detail.title });
+                console.log('[HistoryPage] Updated title after closing canvas:', {
+                  id: selectedChatId,
+                  newTitle: detail.title
+                });
               }
             } catch (error) {
               console.error('Failed to reload archive detail:', error);

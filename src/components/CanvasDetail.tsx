@@ -936,7 +936,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="absolute top-20 left-6 z-[90] pointer-events-auto no-print max-w-[8rem]"
+            className="absolute top-20 left-6 z-[90] pointer-events-auto no-print max-w-[4rem]"
           >
             <div className="relative p-4">
               {/* Menu Background */}

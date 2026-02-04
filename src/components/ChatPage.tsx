@@ -406,13 +406,27 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     };
 
     try {
-      const tasks = [
-        ...artifactsToSave.map(({ messageId, artifact }) => () => saveArtifact({ type: artifact.type, data: artifact.data }, messageId))
-      ];
+      // ✅ 串行保存所有artifacts，避免并发竞态条件
+      const savedItems: string[] = [];
+      const failures: any[] = [];
 
+      // 先保存所有artifacts（串行）
+      for (const { messageId, artifact } of artifactsToSave) {
+        try {
+          const result = await saveArtifact({ type: artifact.type, data: artifact.data }, messageId);
+          savedItems.push(result);
+          savedMessageIds.push(messageId);
+          console.log(`✅ Saved artifact ${messageId}`);
+        } catch (error) {
+          console.error(`❌ Failed to save artifact ${messageId}:`, error);
+          failures.push({ messageId, error });
+        }
+      }
+
+      // 最后保存文本（如果有）
       if (textOnlyMessages.length > 0) {
-        tasks.push(() =>
-          saveArtifact(
+        try {
+          await saveArtifact(
             {
               type: 'save',
               data: {
@@ -421,23 +435,16 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
               }
             },
             undefined
-          )
-        );
+          );
+          savedText = true;
+          console.log('✅ Saved conversation text');
+        } catch (error) {
+          console.error('❌ Failed to save conversation text:', error);
+          failures.push({ type: 'text', error });
+        }
       }
 
-      const results = await Promise.allSettled(tasks.map((task) => task()));
-
-      const failures = results.filter((result) => result.status === 'rejected');
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          if (result.value === 'text') {
-            savedText = true;
-          } else {
-            savedMessageIds.push(result.value);
-          }
-        }
-      });
-
+      // 更新UI标记为已保存
       if (savedMessageIds.length > 0) {
         const updated = messages.map((message) =>
           savedMessageIds.includes(message.id) && message.artifact

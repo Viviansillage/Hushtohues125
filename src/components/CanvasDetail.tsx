@@ -795,7 +795,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                }}
                onMouseDown={(e) => e.stopPropagation()}
              />
-             <div className="h-1 w-[160%] mt-2 relative overflow-visible">
+             <div className="h-1 w-[200%] mt-2 relative overflow-visible">
                  <svg className="w-full h-4 overflow-visible absolute top-0 left-0 text-[#1a1a1a]" preserveAspectRatio="none">
                      <path d="M0,2 Q100,5 200,2 T400,2 T600,2 T800,2 T1000,2 V4 H0 Z" fill="currentColor" opacity="0.1" />
                      <path d="M0,2 Q100,0 200,2 T400,2 T600,2 T800,2 T1000,2" fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ filter: 'url(#hand-drawn)' }}/>

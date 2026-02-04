@@ -246,7 +246,27 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
             isPublic: selectedChatDetail.isPublic,
             imageArtifacts  // ✅ 传递完整的image信息（包含title/summary）
           }}
-          onClose={() => setSelectedChatId(null)} 
+          onClose={async () => {
+            // 重新加载 archive 详情以获取最新的标题
+            try {
+              const response = await fetch(`/api/history/${selectedChatId}`, {
+                headers: {
+                  'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+                }
+              });
+              if (response.ok) {
+                const data = await response.json();
+                const detail = data.ok ? data.item : data;
+                // 更新父组件中的历史列表
+                if (detail.title !== selectedChatDetail.title) {
+                  onUpdateHistory(selectedChatId, { title: detail.title });
+                }
+              }
+            } catch (error) {
+              console.error('Failed to reload archive detail:', error);
+            }
+            setSelectedChatId(null);
+          }} 
         />
       );
     }

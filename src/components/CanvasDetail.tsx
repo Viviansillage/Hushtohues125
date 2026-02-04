@@ -780,7 +780,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         <motion.div
            drag={!isPreview && !readOnly}
            dragMomentum={false}
-           className={`absolute left-[5%] top-12 z-[90] w-[90%] ${isPreview || readOnly ? '' : 'cursor-move'}`}
+           className={`absolute left-[10%] top-12 z-[90] w-[80%] ${isPreview || readOnly ? '' : 'cursor-move'}`}
            style={{ x: 0, y: 0 }}
         >
              <input 
@@ -936,9 +936,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="absolute top-16 left-6 z-[90] pointer-events-auto no-print"
+            className="absolute top-20 left-6 z-[90] pointer-events-auto no-print max-w-xs"
           >
-            <div className="relative p-6">
+            <div className="relative p-4">
               {/* Menu Background */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" preserveAspectRatio="none">
                 <path 
@@ -960,17 +960,17 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                 />
               </svg>
 
-              <div className="relative z-10 flex flex-col gap-3">
-                <p className="text-sm text-[#4a4a4a] mb-2 handwritten max-w-xs">
+              <div className="relative z-10 flex flex-col gap-2">
+                <p className="text-xs text-[#4a4a4a] mb-2 handwritten">
                   You have unsaved changes. Do you want to save them before leaving?
                 </p>
 
                 {/* Save and Exit */}
                 <button
                   onClick={handleSaveAndExit}
-                  className="relative group/option flex items-center gap-3 p-3 transition-all hover:scale-105"
+                  className="relative group/option flex items-center gap-2 p-2 transition-all hover:scale-105"
                 >
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 280 50" preserveAspectRatio="none">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 240 45" preserveAspectRatio="none">
                     <path 
                       d="M 8 25 C 8 10 40 3 140 5 C 240 7 272 10 272 25 C 272 40 240 47 140 45 C 40 43 8 40 8 25 Z"
                       fill="#1a1a1a" 
@@ -986,9 +986,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                 {/* Exit Without Saving */}
                 <button
                   onClick={handleExitWithoutSaving}
-                  className="relative group/option flex items-center gap-3 p-3 transition-all hover:scale-105"
+                  className="relative group/option flex items-center gap-2 p-2 transition-all hover:scale-105"
                 >
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 280 50" preserveAspectRatio="none">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 240 45" preserveAspectRatio="none">
                     <path 
                       d="M 272 25 C 270 10 240 5 140 3 C 40 1 8 8 8 25 C 8 42 40 48 140 46 C 240 44 274 40 272 25 Z"
                       fill="none" 

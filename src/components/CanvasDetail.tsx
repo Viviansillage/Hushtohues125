@@ -518,15 +518,23 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
       {/* Header Bar */}
       <div className="absolute top-0 left-0 w-full p-6 z-[100] flex justify-between items-start pointer-events-none no-print">
-        <button 
-          onClick={handleClose}
-          className="flex items-center gap-2 text-[#6d6d6d] hover:text-[#1a1a1a] transition-colors handwritten group pointer-events-auto"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-x-1 transition-transform">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-          Back
-        </button>
+        <div className="relative pointer-events-auto">
+          <button 
+            onClick={() => {
+              if (hasUnsavedChanges) {
+                setShowExitConfirm(true);
+              } else {
+                onClose();
+              }
+            }}
+            className="flex items-center gap-2 text-[#6d6d6d] hover:text-[#1a1a1a] transition-colors handwritten group"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-x-1 transition-transform">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+        </div>
         
         <div className="flex items-center gap-4 pointer-events-auto">
           {/* Archive Mode Controls - Save, Preview & Share (Only shown in non-readOnly mode) */}
@@ -788,7 +796,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                onMouseDown={(e) => e.stopPropagation()}
              />
              <div className="h-1 w-full mt-2 relative overflow-visible">
-                 <svg className="w-full h-4 overflow-visible absolute top-0 left-0 text-[#1a1a1a]" preserveAspectRatio="none" viewBox="0 0 1000 4">
+                 <svg className="w-full h-4 overflow-visible absolute top-0 left-0 text-[#1a1a1a]" preserveAspectRatio="none">
                      <path d="M0,2 Q100,5 200,2 T400,2 T600,2 T800,2 T1000,2 V4 H0 Z" fill="currentColor" opacity="0.1" />
                      <path d="M0,2 Q100,0 200,2 T400,2 T600,2 T800,2 T1000,2" fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ filter: 'url(#hand-drawn)' }}/>
                  </svg>
@@ -920,66 +928,88 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         )}
         </div>
       </div>
-      {/* Exit Confirmation Dialog */}
+      {/* Exit Confirmation Menu - Below Back Button */}
       <AnimatePresence>
         {showExitConfirm && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-[200] flex items-start justify-start p-6"
-            onClick={() => setShowExitConfirm(false)}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            className="absolute top-16 left-6 z-[90] pointer-events-auto no-print"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-[#faf8f3] p-6 max-w-sm w-full relative"
-              style={{
-                border: '3px solid #1a1a1a',
-                borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px',
-                filter: 'url(#hand-drawn-border)'
-              }}
-            >
-              <h3 className="text-2xl font-bold mb-4 handwritten text-[#1a1a1a]">
-                Unsaved Changes
-              </h3>
-              <p className="text-[#4a4a4a] mb-6 font-sans">
-                You have unsaved changes. Do you want to save them before leaving?
-              </p>
-              
-              <div className="flex flex-col gap-3">
+            <div className="relative p-6">
+              {/* Menu Background */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" preserveAspectRatio="none">
+                <path 
+                  d="M2 2 L100% 0 L100% 100% L0 100% Z" 
+                  fill="#faf8f3" 
+                  stroke="#1a1a1a" 
+                  strokeWidth="2" 
+                  style={{ filter: 'url(#hand-drawn-border)' }}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <path 
+                  d="M4 4 L calc(100% - 4px) 2 L calc(100% - 2px) calc(100% - 4px) L 2 calc(100% - 2px) Z" 
+                  fill="none" 
+                  stroke="#1a1a1a" 
+                  strokeWidth="1" 
+                  opacity="0.5"
+                  style={{ filter: 'url(#hand-drawn-border)' }}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+
+              <div className="relative z-10 flex flex-col gap-3">
+                <p className="text-sm text-[#4a4a4a] mb-2 handwritten max-w-xs">
+                  You have unsaved changes. Do you want to save them before leaving?
+                </p>
+
+                {/* Save and Exit */}
                 <button
                   onClick={handleSaveAndExit}
-                  className="w-full bg-[#1a1a1a] text-[#faf8f3] py-3 px-4 handwritten font-bold text-lg hover:bg-[#333] transition-colors"
-                  style={{
-                    border: '2px solid #1a1a1a',
-                    filter: 'url(#hand-drawn-border)'
-                  }}
+                  className="relative group/option flex items-center gap-3 p-3 transition-all hover:scale-105"
                 >
-                  Save and Exit
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 280 50" preserveAspectRatio="none">
+                    <path 
+                      d="M 8 25 C 8 10 40 3 140 5 C 240 7 272 10 272 25 C 272 40 240 47 140 45 C 40 43 8 40 8 25 Z"
+                      fill="#1a1a1a" 
+                      stroke="#1a1a1a" 
+                      strokeWidth="2" 
+                      strokeLinecap="round"
+                      style={{ filter: 'url(#hand-drawn-border)' }}
+                    />
+                  </svg>
+                  <span className="relative z-10 handwritten font-bold text-sm text-[#faf8f3] w-full text-center">Save and Exit</span>
                 </button>
-                
+
+                {/* Exit Without Saving */}
                 <button
                   onClick={handleExitWithoutSaving}
-                  className="w-full bg-transparent text-[#1a1a1a] py-3 px-4 handwritten font-bold text-lg hover:bg-[#1a1a1a]/5 transition-colors"
-                  style={{
-                    border: '2px solid #1a1a1a',
-                    filter: 'url(#hand-drawn-border)'
-                  }}
+                  className="relative group/option flex items-center gap-3 p-3 transition-all hover:scale-105"
                 >
-                  Exit Without Saving
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" viewBox="0 0 280 50" preserveAspectRatio="none">
+                    <path 
+                      d="M 272 25 C 270 10 240 5 140 3 C 40 1 8 8 8 25 C 8 42 40 48 140 46 C 240 44 274 40 272 25 Z"
+                      fill="none" 
+                      stroke="#1a1a1a" 
+                      strokeWidth="2" 
+                      strokeLinecap="round"
+                      style={{ filter: 'url(#hand-drawn-border)' }}
+                    />
+                  </svg>
+                  <span className="relative z-10 handwritten font-bold text-sm text-[#1a1a1a] w-full text-center">Exit Without Saving</span>
                 </button>
-                
+
+                {/* Cancel */}
                 <button
                   onClick={() => setShowExitConfirm(false)}
-                  className="w-full bg-transparent text-[#6d6d6d] py-3 px-4 handwritten text-lg hover:text-[#1a1a1a] transition-colors"
+                  className="text-[#6d6d6d] hover:text-[#1a1a1a] handwritten text-sm text-center py-2 transition-colors"
                 >
                   Cancel
                 </button>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>    </div>

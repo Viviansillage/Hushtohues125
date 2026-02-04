@@ -293,20 +293,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     const currentState = JSON.stringify({ title, items });
     savedStateRef.current = currentState;
     
-    // Try to load saved title from localStorage (only in archive mode)
-    if (!readOnly) {
-      const savedState = localStorage.getItem(`canvas-${item.id}`);
-      if (savedState) {
-        try {
-          const parsed = JSON.parse(savedState);
-          if (parsed.title && parsed.title !== title) {
-            setTitle(parsed.title);
-          }
-        } catch (e) {
-          console.error('Failed to load saved title:', e);
-        }
-      }
-    }
+    // 不再从 localStorage 加载标题，因为 item.title 已经是数据库中的最新值
+    // localStorage 只用于检测未保存的更改
   }, []);
 
   // Track changes

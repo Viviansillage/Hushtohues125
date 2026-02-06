@@ -279,6 +279,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
           title,
           content,
           messages: textOnlyMessages,
+          tags: ['auto-saved'],
           previewImages: []  // 不保存图片
         });
         console.log('[ChatPage] ✅ Auto-saved chat history:', title);

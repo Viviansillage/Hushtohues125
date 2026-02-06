@@ -1,5 +1,4 @@
 import { getCommunityMeta, getCommunityPosts, getActor, supabase } from './supabase.js';
-import { extractCanvasText, filterSystemTags, generateSemanticTags } from './tagging.js';
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -329,7 +328,7 @@ export default async function handler(req, res) {
           likes: post.likes || 0,
           comments: post.comments || 0,
           timestamp: post.created_at,  // ✅ Use created_at consistently
-          tags: filterSystemTags(post.tags || [])
+          tags: post.tags || []
         }));
         
         console.log('[Discover List] ✅ Returning', formatted.length, 'posts');
@@ -537,7 +536,7 @@ async function handlePublish(req, res, body) {
     // 1. 验证 session 是否存在
     const { data: history, error: historyError } = await supabase
       .from('chat_history')
-      .select('session_id, title, is_public, content_json')
+      .select('session_id, title, is_public')
       .eq('session_id', finalSessionId)
       .maybeSingle();
     
@@ -558,19 +557,6 @@ async function handlePublish(req, res, body) {
         console.error('[handlePublish] Failed to update history.is_public:', updateHistoryError);
         return res.status(500).json({ error: 'Failed to update archive visibility' });
       }
-    }
-
-    const titleForTags = body.title || history.title || 'Untitled';
-    const canvasText = extractCanvasText(history.content_json, titleForTags);
-    const semanticTags = await generateSemanticTags(canvasText);
-
-    const { error: updateTagsError } = await supabase
-      .from('chat_history')
-      .update({ tags: semanticTags })
-      .eq('session_id', finalSessionId);
-
-    if (updateTagsError) {
-      console.warn('[handlePublish] Failed to update history tags:', updateTagsError);
     }
     
     // 2. 获取 author name
@@ -597,7 +583,7 @@ async function handlePublish(req, res, body) {
           is_public: true,
           title: body.title || history.title || 'Untitled',
           cover_image_url: body.coverImageUrl || body.cover_image_url || null,
-          tags: semanticTags,
+          tags: body.tags || [],
           created_at: now  // ✅ Use created_at (will be ignored on update if column has default)
         },
         {
@@ -749,7 +735,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       messages: messages || [],
       content: history.content_json?.content || '',
       contentJson: history.content_json || null,  // ✅ Pass complete contentJson with layout
-      tags: filterSystemTags(history.tags || communityPost.tags || []),
+      tags: history.tags || communityPost.tags || [],
       isPublic: true,
       readOnly: true,  // ✅ 强制只读
       stats: {
@@ -901,7 +887,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       mindmaps,
       messages: messages || [],
       content: archive.content_json?.content || '',
-      tags: filterSystemTags(archive.tags || []),
+      tags: archive.tags || [],
       isPublic: true,
       readOnly: true,  // ✅ 标记为只读
       stats: {

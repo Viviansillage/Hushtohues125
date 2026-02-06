@@ -129,6 +129,10 @@ export default async function handler(req, res) {
         const currentArtifacts = existingArchive.content_json?.artifacts || [];
         const updatedArtifacts = [...currentArtifacts, newArtifactEntry];
         
+        // 更新 tags：合并已有标签和新的 artifact 类型
+        const currentTags = existingArchive.tags || [];
+        const uniqueTags = Array.from(new Set([...currentTags, 'save', artifact.type]));
+        
         // 更新 preview_images：提取图片 URL
         const currentPreviews = existingArchive.preview_images || [];
         const newImageUrl = artifact.type === 'image' ? artifact.data?.imageUrl : null;
@@ -247,6 +251,7 @@ export default async function handler(req, res) {
               items: updatedItems,
               sessionId
             },
+            tags: uniqueTags,
             preview_images: updatedPreviews,  // ✅ 更新图片预览
             updated_at: new Date().toISOString()
           })
@@ -365,7 +370,7 @@ export default async function handler(req, res) {
               items: initialItems,
               sessionId
             },
-            tags: [],
+            tags: ['save', artifact.type],
             preview_images: previewImages,  // ✅ 添加预览图
             is_public: false
           })
@@ -625,7 +630,7 @@ export default async function handler(req, res) {
               savedMessages: updatedSavedMessages,
               sessionId
             },
-            tags: [],
+            tags: ['save'],
             is_public: false
           })
           .select()

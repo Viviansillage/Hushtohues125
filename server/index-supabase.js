@@ -366,7 +366,7 @@ app.post('/api/chat/artifact', async (req, res) => {
       lastMessage: seedText || `Saved a ${kind} artifact.`,
       previewImages,
       isPublic: false,
-      tags: [],
+      tags: kind === 'chat' ? [] : [kind],
       timestamp: new Date().toISOString()
     });
 

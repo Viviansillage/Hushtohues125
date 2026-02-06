@@ -1,5 +1,4 @@
 import { getActor, supabase } from '../supabase.js';
-import { filterSystemTags } from '../tagging.js';
 
 /**
  * GET /api/history/[id] - 获取单个 archive 详情
@@ -80,7 +79,7 @@ export default async function handler(req, res) {
           timestamp: data.timestamp,
           previewImages: data.preview_images || [],
           isPublic: data.is_public,
-          tags: filterSystemTags(data.tags || []),
+          tags: data.tags || [],
           contentJson: data.content_json,
           artifacts: data.content_json?.artifacts || []
         }
@@ -116,7 +115,7 @@ export default async function handler(req, res) {
       const updates = {};
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
-      if (body.tags !== undefined) updates.tags = filterSystemTags(body.tags);
+      if (body.tags !== undefined) updates.tags = body.tags;
 
       const { data, error } = await supabase
         .from('chat_history')
@@ -146,7 +145,7 @@ export default async function handler(req, res) {
           timestamp: data.timestamp,
           previewImages: data.preview_images || [],
           isPublic: data.is_public,
-          tags: filterSystemTags(data.tags || [])
+          tags: data.tags || []
         }
       });
     }

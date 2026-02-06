@@ -113,12 +113,35 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [isSavingAll, setIsSavingAll] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasLoadedRef = useRef(false);
+  const lastSaveHashRef = useRef<string>('');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDirtyRef = useRef(false); // ✅ Track if user has sent new messages
+  const currentConversationIdRef = useRef(conversationId);
 
-  // ✅ 刷新时从数据库恢复历史消息
+  // ✅ Reset refs when conversationId changes
+  useEffect(() => {
+    if (currentConversationIdRef.current !== conversationId) {
+      console.log('[ChatPage] 🔄 ConversationId changed, resetting refs');
+      hasLoadedRef.current = false;
+      lastSaveHashRef.current = '';
+      isDirtyRef.current = false;
+      currentConversationIdRef.current = conversationId;
+    }
+  }, [conversationId]);
+
+  // ✅ 刷新时从数据库恢复历史消息 - ONLY ONCE on mount or conversationId change
   useEffect(() => {
     const loadHistoryMessages = async () => {
-      // 只在刷新后（messages 为空）加载
+      // Prevent duplicate loads
+      if (hasLoadedRef.current && messages.length > 0) {
+        setIsLoadingHistory(false);
+        return;
+      }
+
+      // Only load if messages are empty
       if (messages.length > 0) {
+        hasLoadedRef.current = true;
         setIsLoadingHistory(false);
         return;
       }
@@ -141,23 +164,38 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         if (loadedMessages.length > 0) {
           console.log('[ChatPage] ✅ Restored', loadedMessages.length, 'messages from DB');
           setMessages(loadedMessages);
+          // ✅ NOT dirty - these are restored messages, don't auto-save
+          isDirtyRef.current = false;
         } else {
           console.log('[ChatPage] ℹ️  No history found for this session');
         }
+        hasLoadedRef.current = true;
       } catch (error) {
         console.error('[ChatPage] ❌ Failed to load history:', error);
         // 静默失败，不影响用户继续使用
+        hasLoadedRef.current = true;
       } finally {
         setIsLoadingHistory(false);
       }
     };
 
     loadHistoryMessages();
-  }, [conversationId, messages.length, setMessages]); // conversationId 变化时重新加载
+  }, [conversationId, setMessages]); // ✅ Removed messages.length dependency
 
-  // 自动保存聊天历史（只保存文字，不保存图片）
+  // 自动保存聊天历史（只保存文字，不保存图片）- DEBOUNCED to prevent spam
   useEffect(() => {
+    // Clear any existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
     const autoSaveHistory = async () => {
+      // ✅ CRITICAL: Only save if user has actually sent new messages
+      if (!isDirtyRef.current) {
+        console.log('[ChatPage] ⏭️  Skip auto-save: session not dirty (no new user messages)');
+        return;
+      }
+
       // 只在有消息且有 AI 回复时才保存
       if (messages.length < 2) return;
       
@@ -173,6 +211,16 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       
       if (textOnlyMessages.length === 0) return;
       
+      // ✅ Improved hash: include text content to detect streaming updates
+      const messageHash = textOnlyMessages
+        .map(m => `${m.id}:${m.text.length}:${m.text.substring(0, 20)}`)
+        .join('|');
+      
+      if (messageHash === lastSaveHashRef.current) {
+        console.log('[ChatPage] ⏭️  Skip auto-save: content unchanged (hash match)');
+        return;
+      }
+      
       // 生成标题（使用第一条用户消息或默认标题）
       const firstUserMessage = messages.find(m => m.sender === 'user');
       const title = firstUserMessage 
@@ -184,6 +232,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       const content = lastMessage.text.substring(0, 200);
       
       try {
+        console.log('[ChatPage] 💾 Auto-saving chat history (user sent messages)');
         await saveToArchive({
           title,
           content,
@@ -191,20 +240,26 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
           tags: ['auto-saved'],
           previewImages: []  // 不保存图片
         });
-        console.log('✅ Auto-saved chat history:', title);
+        console.log('[ChatPage] ✅ Auto-saved chat history:', title);
+        lastSaveHashRef.current = messageHash;
         
         // 触发历史记录刷新
         if (onHistorySync) {
           onHistorySync();
         }
       } catch (error) {
-        console.error('❌ Failed to auto-save history:', error);
+        console.error('[ChatPage] ❌ Failed to auto-save history:', error);
       }
     };
     
-    // 使用防抖，避免频繁保存
-    const timer = setTimeout(autoSaveHistory, 2000);
-    return () => clearTimeout(timer);
+    // ✅ 使用防抖，避免频繁保存 - INCREASED to 5 seconds
+    saveTimeoutRef.current = setTimeout(autoSaveHistory, 5000);
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [messages, onHistorySync]);
 
   const scrollToBottom = () => {
@@ -230,6 +285,9 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       timestamp: new Date()
     };
     appendMessage(userMessage);
+    
+    // ✅ Mark session as dirty - user has sent a new message
+    isDirtyRef.current = true;
 
     try {
       // ✅ 使用 store 的 conversationId

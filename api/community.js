@@ -681,16 +681,14 @@ async function handleCommunityDetailByPostId(req, res, postId) {
     // If community_posts.is_public=true, the content is public regardless of history status
     // (history might be unpublished but community post remains)
 
-    // 3. 查询 artifacts（images/mindmaps）
-    const { data: artifacts, error: artifactsError } = await supabase
-      .from('artifacts')
-      .select('*')
-      .eq('session_id', communityPost.session_id)
-      .order('created_at', { ascending: true });
+    // 3. 从 chat_history.content_json.artifacts 读取保存的 artifacts
+    // ✅ 修复：只显示用户 Save 的内容，与 Archive 详情保持一致
+    const savedArtifacts = history.content_json?.artifacts || [];
     
-    if (artifactsError) {
-      console.error('[CommunityDetail] Artifacts query error:', artifactsError);
-    }
+    console.log('[CommunityDetail] Found saved artifacts:', {
+      count: savedArtifacts.length,
+      types: savedArtifacts.map(a => a.type)
+    });
 
     // 4. 查询 messages
     const { data: messages, error: messagesError } = await supabase
@@ -707,13 +705,20 @@ async function handleCommunityDetailByPostId(req, res, postId) {
     let joined = false;
     // TODO: 如果需要 following 功能，这里查询 user_followed_communities
 
-    // 6. 组装 canvas 数据（从 history/artifacts 取最新内容）
-    const images = artifacts?.filter(a => a.artifact_type === 'image').map(a => a.public_url) || [];
-    const mindmaps = artifacts?.filter(a => a.artifact_type === 'mindmap').map(a => ({
-      mermaidCode: a.metadata?.mermaidCode || a.metadata?.code || '',
-      title: a.metadata?.title,
-      summary: a.metadata?.summary
-    })) || [];
+    // 6. 组装 canvas 数据（从 chat_history.content_json.artifacts 读取）
+    // ✅ 只包含用户 Save 的图片和 mindmap
+    const images = savedArtifacts
+      .filter(a => a.type === 'image')
+      .map(a => a.data?.imageUrl)
+      .filter(Boolean);
+    
+    const mindmaps = savedArtifacts
+      .filter(a => a.type === 'mindmap')
+      .map(a => ({
+        mermaidCode: a.data?.mermaidCode || a.data?.code || '',
+        title: a.data?.title,
+        summary: a.data?.summary
+      }));
 
     const canvasData = {
       postId: communityPost.id,
@@ -808,10 +813,10 @@ async function handleCommunityDetail(req, res, sessionId) {
       return res.status(404).json({ error: 'Community post not found or not public' });
     }
 
-    // 2. 从 archive 查询真实数据（chat_history + chat_sessions + artifacts）
+    // 2. 从 archive 查询真实数据（chat_history）
     const { data: archive, error: archiveError } = await supabase
       .from('chat_history')
-      .select('*, chat_sessions(*)')
+      .select('*')
       .eq('session_id', sessionId)
       .maybeSingle();
     
@@ -820,17 +825,14 @@ async function handleCommunityDetail(req, res, sessionId) {
       return res.status(404).json({ error: 'Archive data not found' });
     }
 
-    // 3. 查询该 session 的所有 artifacts（images/mindmaps）
-    const { data: artifacts, error: artifactsError } = await supabase
-      .from('artifacts')
-      .select('*')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: true });
+    // 3. 从 chat_history.content_json.artifacts 读取保存的 artifacts
+    // ✅ 修复：只显示用户 Save 的内容，与 Archive 详情保持一致
+    const savedArtifacts = archive.content_json?.artifacts || [];
     
-    if (artifactsError) {
-      console.error('[handleCommunityDetail] Artifacts query error:', artifactsError);
-      // 不阻塞，返回空数组
-    }
+    console.log('[handleCommunityDetail] Found saved artifacts:', {
+      count: savedArtifacts.length,
+      types: savedArtifacts.map(a => a.type)
+    });
 
     // 4. 查询该 session 的所有消息
     const { data: messages, error: messagesError } = await supabase
@@ -857,13 +859,20 @@ async function handleCommunityDetail(req, res, sessionId) {
       joined = !!existing;
     }
 
-    // 6. 组装 canvas 数据（与 Archive 详情页格式一致）
-    const images = artifacts?.filter(a => a.artifact_type === 'image').map(a => a.public_url) || [];
-    const mindmaps = artifacts?.filter(a => a.artifact_type === 'mindmap').map(a => ({
-      mermaidCode: a.metadata?.mermaidCode || a.metadata?.code || '',
-      title: a.metadata?.title,
-      summary: a.metadata?.summary
-    })) || [];
+    // 6. 组装 canvas 数据（从 chat_history.content_json.artifacts 读取）
+    // ✅ 只包含用户 Save 的图片和 mindmap
+    const images = savedArtifacts
+      .filter(a => a.type === 'image')
+      .map(a => a.data?.imageUrl)
+      .filter(Boolean);
+    
+    const mindmaps = savedArtifacts
+      .filter(a => a.type === 'mindmap')
+      .map(a => ({
+        mermaidCode: a.data?.mermaidCode || a.data?.code || '',
+        title: a.data?.title,
+        summary: a.data?.summary
+      }));
 
     // 7. 构造完整的 canvas 数据（与 ArchiveDetail 保持一致）
     const canvasData = {

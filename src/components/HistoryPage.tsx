@@ -207,13 +207,10 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
       const artifacts = selectedChatDetail.artifacts || [];
       console.log('[HistoryPage] Rendering detail with artifacts:', artifacts);
       
-      const imageArtifacts = artifacts
+      const allImages = artifacts
         .filter((artifact: any) => (artifact.type === 'image' || artifact.kind === 'image'))
-        .map((artifact: any) => ({
-          imageUrl: artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url,
-          summary: artifact.data?.summary || artifact.payload?.summary
-        }))
-        .filter((img: any) => !!img.imageUrl);
+        .map((artifact: any) => artifact.data?.imageUrl || artifact.payload?.imageUrl || artifact.payload?.url)
+        .filter(Boolean);
 
       const mindmapArtifacts = artifacts
         .filter((artifact: any) => artifact.type === 'mindmap' || artifact.kind === 'mindmap')
@@ -225,13 +222,17 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
           summary:
             artifact.data?.summary ||
             artifact.payload?.summary ||
-            artifact.payload?.structuredMindmap?.summary
+            artifact.payload?.structuredMindmap?.summary,
+          title:
+            artifact.data?.title ||
+            artifact.payload?.title ||
+            artifact.payload?.structuredMindmap?.title
         }))
         .filter((mindmap: any) => !!mindmap.mermaidCode);
 
       // Fallback: 如果 artifacts 为空，使用 previewImages（只有URL，没有title/summary）
-      const imagesToShow = imageArtifacts.length > 0 
-        ? imageArtifacts.map(img => img.imageUrl)
+      const imagesToShow = allImages.length > 0 
+        ? allImages
         : selectedChatDetail.previewImages;
 
       return (
@@ -244,7 +245,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
             content: selectedChatDetail.lastMessage,
             tags: selectedChatDetail.tags,
             isPublic: selectedChatDetail.isPublic,
-            imageArtifacts  // ✅ 传递完整的image信息（包含title/summary）
+            contentJson: selectedChatDetail.contentJson  // ✅ 传递完整的 contentJson（包含 items）
           }}
           onClose={async () => {
             // 重新加载 archive 详情以获取最新的标题

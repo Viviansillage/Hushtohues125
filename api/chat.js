@@ -102,6 +102,28 @@ const MINDMAP_PROMPT = `Analyze the conversation and create a mindmap in Mermaid
   "mermaidCode": "mindmap\\n  root((Main Topic))\\n    Branch 1\\n      Detail 1\\n      Detail 2\\n    Branch 2\\n      Detail 3"
 }
 
+**CRITICAL MERMAID SYNTAX RULES - MUST FOLLOW**:
+
+1. **NO PARENTHESES inside (( ))**:
+   - NEVER use any type of parentheses inside double parentheses
+   - ✗ WRONG: root((Topic (Subtitle)))
+   - ✗ WRONG: root((Topic（Subtitle）))
+   - ✓ CORRECT: root((Topic - Subtitle))
+
+2. **If title contains parentheses, rewrite as "A - B"**:
+   - "Dungeon Meshi (迷宫饭)" → "Dungeon Meshi - 迷宫饭"
+   - "Python (Programming)" → "Python - Programming"
+
+3. **Each node MUST be on its own line**:
+   - One line = One node
+   - No inline children
+
+4. **Use exactly 2 spaces for indentation**:
+   - Level 1 (root): no indent
+   - Level 2: 2 spaces
+   - Level 3: 4 spaces
+   - Level 4: 6 spaces
+
 Example mermaid mindmap syntax:
 mindmap
   root((Central Idea))

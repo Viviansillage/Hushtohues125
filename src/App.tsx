@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { ChatPage } from './components/ChatPage';
 import { HistoryPage, ChatHistory } from './components/HistoryPage';
 import { ChatHistoryPage, ChatSession } from './components/ChatHistoryPage';
@@ -120,7 +120,7 @@ export default function App() {
     setCurrentPage('community-detail');
   };
 
-  const refreshHistory = async () => {
+  const refreshHistory = useCallback(async () => {
     try {
       console.log('[App] Fetching history, guestId:', localStorage.getItem('hushtohues_guest_id'));
       const historyData = await getHistory();
@@ -132,9 +132,9 @@ export default function App() {
         console.error('[App] Error message:', error.message);
       }
     }
-  };
+  }, []);
 
-  const refreshChatSessions = async () => {
+  const refreshChatSessions = useCallback(async () => {
     try {
       console.log('[App] Fetching chat sessions');
       const sessionsData = await getChatSessions();
@@ -146,7 +146,7 @@ export default function App() {
     } catch (error) {
       console.error('[App] Failed to refresh chat sessions', error);
     }
-  };
+  }, []);
 
   const refreshCommunityMeta = async () => {
     try {
@@ -258,8 +258,11 @@ export default function App() {
     try {
       const updated = await updateProfile(payload);
       setProfile(updated);
+      console.log('[App] Profile updated successfully:', updated.userName);
     } catch (error) {
-      console.error('Failed to update profile', error);
+      console.error('[App] Failed to update profile:', error);
+      // Re-throw error so ProfilePage can show error message
+      throw error;
     }
   };
 
@@ -270,6 +273,12 @@ export default function App() {
       (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
     );
   }, [communityPosts]);
+
+  // ✅ Stable callback to prevent ChatPage useEffect from re-triggering
+  const handleHistorySync = useCallback(() => {
+    refreshHistory();
+    refreshChatSessions();
+  }, [refreshHistory, refreshChatSessions]);
 
   return (
     <>
@@ -511,10 +520,7 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          {currentPage === 'chat' && <ChatPage onHistorySync={() => {
-            refreshHistory();
-            refreshChatSessions();
-          }} />}
+          {currentPage === 'chat' && <ChatPage onHistorySync={handleHistorySync} />}
           {currentPage === 'archive' && (
             <HistoryPage
               onNavigateToCommunity={handleNavigateToCommunity}

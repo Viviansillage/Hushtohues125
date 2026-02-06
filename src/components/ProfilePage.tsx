@@ -29,13 +29,39 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
   // Editing states
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempUserName, setTempUserName] = useState(profile.userName);
+  const [nameError, setNameError] = useState<string>('');
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAvatar(profile.avatar);
     setPreferences(profile.preferences);
     setTempUserName(profile.userName);
+    setNameError('');
   }, [profile]);
+
+  /**
+   * 验证昵称格式
+   * - 3-20 字符
+   * - 只允许字母、数字、下划线
+   */
+  const validateName = (name: string): { valid: boolean; error?: string } => {
+    const trimmed = name.trim();
+    
+    if (trimmed.length < 3) {
+      return { valid: false, error: 'Name must be at least 3 characters' };
+    }
+    
+    if (trimmed.length > 20) {
+      return { valid: false, error: 'Name must be at most 20 characters' };
+    }
+    
+    const validPattern = /^[a-zA-Z0-9_]+$/;
+    if (!validPattern.test(trimmed)) {
+      return { valid: false, error: 'Only letters, numbers, and underscores allowed' };
+    }
+    
+    return { valid: true };
+  };
 
   // Focus input when editing starts
   useEffect(() => {
@@ -44,17 +70,39 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
     }
   }, [isEditingName]);
 
-  const handleSaveName = () => {
-    if (tempUserName.trim()) {
-      const newHandle = '@' + tempUserName.toLowerCase().replace(/\s+/g, '');
-      onUpdateProfile({ userName: tempUserName, userHandle: newHandle });
+  const handleSaveName = async () => {
+    const trimmed = tempUserName.trim();
+    
+    if (!trimmed) {
+      setNameError('Name cannot be empty');
+      return;
+    }
+    
+    // ✅ 验证昵称格式
+    const validation = validateName(trimmed);
+    if (!validation.valid) {
+      setNameError(validation.error || 'Invalid name');
+      toast.error(validation.error || 'Invalid name', { className: 'handwritten font-bold' });
+      return;
+    }
+    
+    try {
+      setNameError('');
+      const newHandle = '@' + trimmed.toLowerCase().replace(/\s+/g, '');
+      await onUpdateProfile({ userName: trimmed, userHandle: newHandle });
       setIsEditingName(false);
       toast.success('Profile updated!', { className: 'handwritten font-bold' });
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to update name';
+      setNameError(errorMsg);
+      toast.error(errorMsg, { className: 'handwritten font-bold' });
     }
   };
 
   const handleCancelEdit = () => {
     setTempUserName(profile.userName);
+    setNameError('');
     setIsEditingName(false);
   };
 
@@ -225,18 +273,30 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
               </>
             ) : (
               <div className="flex flex-col items-center gap-3">
-                <input
-                  ref={nameInputRef}
-                  type="text"
-                  value={tempUserName}
-                  onChange={(e) => setTempUserName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveName();
-                    if (e.key === 'Escape') handleCancelEdit();
-                  }}
-                  className="text-3xl font-bold handwritten text-center bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] px-4 py-2 hand-drawn-border focus:outline-none focus:bg-[#f0ece1]"
-                  placeholder="Enter name"
-                />
+                <div className="flex flex-col items-center gap-1">
+                  <input
+                    ref={nameInputRef}
+                    type="text"
+                    value={tempUserName}
+                    onChange={(e) => {
+                      setTempUserName(e.target.value);
+                      setNameError(''); // 清除错误当用户输入
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') handleCancelEdit();
+                    }}
+                    className={`text-3xl font-bold handwritten text-center bg-[#faf8f3] border-[2.5px] ${nameError ? 'border-red-500' : 'border-[#1a1a1a]'} px-4 py-2 hand-drawn-border focus:outline-none focus:bg-[#f0ece1]`}
+                    placeholder="Enter name"
+                    maxLength={20}
+                  />
+                  {nameError && (
+                    <p className="text-red-600 text-sm handwritten mt-1">{nameError}</p>
+                  )}
+                  <p className="text-[#6d6d6d] text-xs handwritten mt-1">
+                    3-20 characters, letters/numbers/_ only
+                  </p>
+                </div>
                 <div className="flex gap-2">
                   {/* Save button - hand-drawn check */}
                   <button

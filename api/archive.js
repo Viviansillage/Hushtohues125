@@ -1,6 +1,21 @@
 import { supabase, getActor } from './supabase.js';
 
 /**
+ * 清理 Mermaid 代码中的嵌套括号
+ */
+function cleanMermaidCode(code) {
+  if (!code || typeof code !== 'string') return code;
+
+  return code.replace(/\(\(([\s\S]*?)\)\)/g, (_, inner) => {
+    // 把内部所有英文括号替换为全角，避免 Mermaid 解析冲突
+    const safe = inner
+      .replace(/\(/g, '（')
+      .replace(/\)/g, '）');
+    return `((${safe}))`;
+  });
+}
+
+/**
  * Archive Save API
  * 实现同一session只有一个archive记录，多次保存append到同一记录
  */
@@ -96,6 +111,95 @@ export default async function handler(req, res) {
           ? [...currentPreviews, newImageUrl]
           : currentPreviews;
 
+        // ========== 自动生成新元素的位置信息 ==========
+        const currentItems = existingArchive.content_json?.items || [];
+        
+        // 固定高度配置
+        const FIXED_HEIGHTS = {
+          image: 300,
+          mindmap: 280,
+          text: 150
+        };
+        
+        // 遍历计算最大底部位置
+        let maxBottom = 160;  // 默认起始位置
+        currentItems.forEach(item => {
+          const itemHeight = typeof item.height === 'number' 
+            ? item.height 
+            : (FIXED_HEIGHTS[item.type] || 300);
+          
+          const itemBottom = item.y + itemHeight;
+          if (itemBottom > maxBottom) {
+            maxBottom = itemBottom;
+          }
+        });
+        
+        // 新元素放在最下面 + 120px
+        const newY = maxBottom + 120;
+        
+        // 确定新元素的 ID
+        let newId;
+        if (artifact.type === 'image') {
+          const imageCount = currentItems.filter(i => i.type === 'image').length;
+          newId = `img-${imageCount}`;
+        } else if (artifact.type === 'mindmap') {
+          const mindmapCount = currentItems.filter(i => i.type === 'mindmap').length;
+          newId = `mindmap-${mindmapCount}`;
+        } else {
+          newId = `item-${currentItems.length}`;
+        }
+        
+        const newItems = [];
+        
+        // 创建 artifact item（左侧：图片或脑图）
+        const newItem = {
+          id: newId,
+          type: artifact.type,
+          content: artifact.type === 'image' 
+            ? artifact.data?.imageUrl 
+            : (artifact.type === 'mindmap' ? cleanMermaidCode(artifact.data?.mermaidCode) : ''),
+          x: 60,
+          y: newY,
+          width: artifact.type === 'image' ? 400 : 420,
+          height: FIXED_HEIGHTS[artifact.type] || 300,
+          zIndex: currentItems.length + 1
+        };
+        
+        if (artifact.type === 'mindmap' && artifact.data) {
+          newItem.meta = {
+            title: artifact.data.title,
+            summary: artifact.data.summary
+          };
+        }
+        
+        newItems.push(newItem);
+        
+        // 创建对应的 text item（右侧：summary/lastMessage）
+        const textContent = artifact.data?.summary || lastMessage || '';
+        if (textContent.trim()) {
+          const textCount = currentItems.filter(i => i.type === 'text').length;
+          newItems.push({
+            id: `txt-${textCount}`,
+            type: 'text',
+            content: textContent,
+            x: 520,  // 右侧位置
+            y: newY,
+            width: 400,
+            height: 'auto',
+            zIndex: currentItems.length + 2
+          });
+        }
+        
+        const updatedItems = [...currentItems, ...newItems];
+        
+        console.log('[Archive Save] Auto-generated position:', {
+          artifactId: newId,
+          textId: textContent.trim() ? `txt-${currentItems.filter(i => i.type === 'text').length}` : 'none',
+          y: newY,
+          maxBottom,
+          totalItems: updatedItems.length
+        });
+
         // ✅ 保留原有的 last_message，不要用新artifact覆盖
         const preservedLastMessage = existingArchive.last_message || lastMessage.substring(0, 200);
 
@@ -107,6 +211,7 @@ export default async function handler(req, res) {
             content_json: {
               ...existingArchive.content_json,
               artifacts: updatedArtifacts,
+              items: updatedItems,
               sessionId
             },
             tags: uniqueTags,
@@ -160,6 +265,60 @@ export default async function handler(req, res) {
           ? [artifact.data.imageUrl] 
           : [];
 
+        // ========== 为第一个元素生成初始位置 ==========
+        const FIXED_HEIGHTS = {
+          image: 300,
+          mindmap: 280,
+          text: 150
+        };
+        
+        const initialItems = [];
+        let currentY = 160;  // 第一个元素起始位置
+        
+        // 创建 artifact item（左侧：图片或脑图）
+        const firstItem = {
+          id: artifact.type === 'image' ? 'img-0' : (artifact.type === 'mindmap' ? 'mindmap-0' : 'item-0'),
+          type: artifact.type,
+          content: artifact.type === 'image' 
+            ? artifact.data?.imageUrl 
+            : (artifact.type === 'mindmap' ? cleanMermaidCode(artifact.data?.mermaidCode) : ''),
+          x: 60,
+          y: currentY,
+          width: artifact.type === 'image' ? 400 : 420,
+          height: FIXED_HEIGHTS[artifact.type] || 300,
+          zIndex: 1
+        };
+        
+        if (artifact.type === 'mindmap' && artifact.data) {
+          firstItem.meta = {
+            title: artifact.data.title,
+            summary: artifact.data.summary
+          };
+        }
+        
+        initialItems.push(firstItem);
+        
+        // 创建对应的 text item（右侧：summary/lastMessage）
+        const textContent = artifact.data?.summary || lastMessage || '';
+        if (textContent.trim()) {
+          initialItems.push({
+            id: 'txt-0',
+            type: 'text',
+            content: textContent,
+            x: 520,  // 右侧位置
+            y: currentY,
+            width: 400,
+            height: 'auto',
+            zIndex: 2
+          });
+        }
+        
+        console.log('[Archive Save] Creating initial items:', {
+          artifactItem: firstItem.id,
+          textItem: textContent.trim() ? 'txt-0' : 'none',
+          position: { x: 60, y: currentY }
+        });
+
         const { data: created, error: createError } = await supabase
           .from('chat_history')
           .insert({
@@ -171,6 +330,7 @@ export default async function handler(req, res) {
             last_message: lastMessage.substring(0, 200),
             content_json: {
               artifacts: [newArtifactEntry],
+              items: initialItems,
               sessionId
             },
             tags: ['save', artifact.type],

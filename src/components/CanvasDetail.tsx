@@ -9,8 +9,7 @@ export interface CanvasItem {
   id: string;
   title: string;
   images: string[];
-  mindmaps?: Array<{ mermaidCode: string; summary?: string }>;
-  imageArtifacts?: Array<{ imageUrl: string; summary?: string }>;  // ✅ 只保留summary
+  mindmaps?: Array<{ mermaidCode: string; title?: string; summary?: string }>;
   content: string;
   tags?: string[];
   isPublic?: boolean;
@@ -147,7 +146,13 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
 
       const renderMindmap = async () => {
         try {
-          const { svg } = await mermaid.render(`archive-mermaid-${id}`, mermaidCode);
+          // 清理旧数据中的嵌套括号：将 (( )) 内的半角括号转为全角
+          const cleanedCode = mermaidCode.replace(/\(\(([\s\S]*?)\)\)/g, (_, inner) => {
+            const safe = inner.replace(/\(/g, '（').replace(/\)/g, '）');
+            return `((${safe}))`;
+          });
+          
+          const { svg } = await mermaid.render(`archive-mermaid-${id}`, cleanedCode);
           if (mermaidRef.current) {
             mermaidRef.current.innerHTML = svg;
           }
@@ -191,108 +196,25 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     console.log('[CanvasDetail] Initializing items, readOnly:', readOnly, 'item.id:', item.id);
     console.log('[CanvasDetail] item.contentJson:', item.contentJson);
     
-    // Priority 1: Check if contentJson has saved items (from database, used in community/readOnly)
+    // ✅ Chat Save 时已自动生成位置，直接使用数据库的 items
     if (item.contentJson?.items && Array.isArray(item.contentJson.items) && item.contentJson.items.length > 0) {
       console.log('[CanvasDetail] ✅ Loading from contentJson.items:', item.contentJson.items.length);
+      console.log('[CanvasDetail] Items detail:', JSON.stringify(item.contentJson.items, null, 2));
       return item.contentJson.items;
     }
     
-    // Priority 2: Try to load saved state from localStorage (for archive mode)
-    const savedState = localStorage.getItem(`canvas-${item.id}`);
-    if (savedState && !readOnly) {
-      try {
-        const parsed = JSON.parse(savedState);
-        if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
-          console.log('[CanvasDetail] ✅ Loading from localStorage:', parsed.items.length);
-          return parsed.items;
-        }
-      } catch (e) {
-        console.error('Failed to parse saved state:', e);
-      }
-    }
+    // ⚠️ 兜底：理论上不应该到这里（Save 时已生成 items）
+    console.warn('[CanvasDetail] ⚠️ No items found in contentJson, this should not happen after Chat Save');
+    console.warn('[CanvasDetail] item.images:', item.images?.length, 'item.mindmaps:', item.mindmaps?.length);
     
-    console.log('[CanvasDetail] ⚠️ Using default layout generation');
-    const generatedItems: DraggableItem[] = [];
-    const hasImages = item.images && item.images.length > 0;
-    const imagesToLoad = hasImages ? item.images : [];
-    const imageArtifactsData = item.imageArtifacts || [];  // ✅ 获取完整的image信息
-    const mindmapsToLoad = item.mindmaps || [];
-    
-    let currentY = 160;  // 起始Y坐标
-    
-    // Stack images vertically on the left, with text boxes on the right
-    imagesToLoad.forEach((imgUrl, index) => {
-      // ✅ 查找对应的summary
-      const artifactData = imageArtifactsData.find(a => a.imageUrl === imgUrl);
-      
-      // 左侧：图片
-      generatedItems.push({
-        id: `img-${index}`,
-        type: 'image',
-        content: imgUrl,
-        x: 60 + (index % 2 * 10),
-        y: currentY,
-        width: 400,
-        height: 'auto',
-        zIndex: index * 2 + 1
-      });
-      
-      // 右侧：对应的文本框（summary）
-      if (artifactData?.summary) {
-        generatedItems.push({
-          id: `txt-img-${index}`,
-          type: 'text',
-          content: artifactData.summary,
-          x: 520,
-          y: currentY,
-          width: 400,
-          height: 'auto',
-          zIndex: index * 2 + 2
-        });
-      }
-      
-      currentY += 420;  // 增加垂直间距
-    });
-
-    mindmapsToLoad.forEach((mindmap, index) => {
-      // 左侧：mindmap
-      generatedItems.push({
-        id: `mindmap-${index}`,
-        type: 'mindmap',
-        content: mindmap.mermaidCode,
-        x: 60 + (index % 2 * 10),
-        y: currentY,
-        width: 420,
-        height: 280,
-        zIndex: (imagesToLoad.length + index) * 2 + 1
-      });
-      
-      // 右侧：对应的文本框（summary）
-      if (mindmap.summary) {
-        generatedItems.push({
-          id: `txt-mindmap-${index}`,
-          type: 'text',
-          content: mindmap.summary,
-          x: 520,
-          y: currentY,
-          width: 400,
-          height: 'auto',
-          zIndex: (imagesToLoad.length + index) * 2 + 2
-        });
-      }
-      
-      currentY += 420;  // 增加垂直间距
-    });
-
-    return generatedItems;
-  });
-
-  // Load saved title and initialize saved state reference
+    // 返回空数组，避免错误
+    return [];
+  }, []);
+  
+  // Initialize savedStateRef after items are initialized
   useEffect(() => {
-    // Initialize savedStateRef with current state after items are loaded
     const currentState = JSON.stringify({ title, items });
     savedStateRef.current = currentState;
-    
     // 不再从 localStorage 加载标题，因为 item.title 已经是数据库中的最新值
     // localStorage 只用于检测未保存的更改
   }, []);
@@ -869,12 +791,21 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                       }}
                     ></div>
                     <div className="relative z-10">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">🧠</span>
+                        <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
+                          {item.meta?.title || 'Mindmap'}
+                        </h3>
+                      </div>
                       <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
                         <MermaidMindmap
                           mermaidCode={item.content || 'mindmap\n  root((Empty))'}
                           id={item.id}
                         />
                       </div>
+                      {item.meta?.summary && (
+                        <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>
+                      )}
                     </div>
                   </div>
                 ) : (

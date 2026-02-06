@@ -1414,7 +1414,7 @@ export default async function handler(req, res) {
         const response = {
           message: {
             id: `msg-${Date.now()}`,
-            text: `${kind} created successfully`,
+            text: `${kind.charAt(0).toUpperCase() + kind.slice(1)} created successfully`,
             sender: 'bot',
             timestamp: new Date().toISOString()
           },

@@ -966,9 +966,9 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                     <span className="w-2 h-2 bg-[#6d6d6d] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                   </div>
                   <span className="text-sm text-[#6d6d6d]">
-                    {artifactType === 'image' && '🎨 Generating image...'}
-                    {artifactType === 'mindmap' && '🧠 Creating mindmap...'}
-                    {artifactType === 'save' && '💾 Saving to archive...'}
+                    {artifactType === 'image' && 'Generating image...'}
+                    {artifactType === 'mindmap' && 'Creating diagram...'}
+                    {artifactType === 'save' && 'Saving to archive...'}
                     {!artifactType && 'Processing...'}
                   </span>
                 </div>
@@ -1003,7 +1003,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                     </svg>
                     <Network className="w-5 h-5 text-[#1a1a1a] relative z-10" />
                   </div>
-                  <span className="text-xs font-bold handwritten text-[#1a1a1a]">Mindmap</span>
+                  <span className="text-xs font-bold handwritten text-[#1a1a1a]">Diagram</span>
                 </button>
 
                 <button

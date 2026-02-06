@@ -4,6 +4,11 @@ import { CanvasDetail } from './CanvasDetail';
 import { deleteHistoryItem } from '../lib/api';
 import { toast } from 'sonner';
 
+const SYSTEM_TAGS = new Set(['save', 'image', 'mindmap', 'auto-saved']);
+
+const filterSemanticTags = (tags: string[] = []) =>
+  tags.filter((tag) => !SYSTEM_TAGS.has(tag.toLowerCase()));
+
 export interface ChatHistory {
   id: string;
   sessionId: string;  // ✅ chat_history.session_id
@@ -392,7 +397,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
                   </div>
                   
                   <div className="flex flex-wrap gap-2 mb-2 pr-12">
-                    {chat.tags && chat.tags.slice(0, 5).map((tag) => (
+                    {filterSemanticTags(chat.tags).slice(0, 5).map((tag) => (
                       <span
                         key={tag}
                         className="px-2 py-1 border-[1.5px] border-[#1a1a1a] text-xs font-medium hand-drawn-border bg-[#faf8f3] hover:bg-[#e8e4d9] cursor-pointer transition-colors"

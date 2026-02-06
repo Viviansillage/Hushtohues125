@@ -1506,7 +1506,6 @@ export default async function handler(req, res) {
                 title,
                 last_message: lastMessage,
                 message_count: messages.length,
-                tags: Array.from(new Set([...(existingRecord.tags || []), 'save'])),
                 updated_at: new Date().toISOString()
               })
               .eq('id', existingRecord.id);
@@ -1523,7 +1522,7 @@ export default async function handler(req, res) {
                 last_message: lastMessage,
                 content_json: { sessionId, messages: messages.slice(-10) }, // 只保存最近10条
                 message_count: messages.length,
-                tags: ['save'],
+                tags: [],
                 is_demo: actor.type === 'guest',
                 expires_at: actor.type === 'guest' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
                 timestamp: new Date().toISOString()

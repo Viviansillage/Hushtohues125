@@ -26,7 +26,7 @@ const createHistoryFromChat = (db, text, kind = 'chat') => {
     timestamp: now,
     previewImages: [],
     isPublic: false,
-    tags: kind === 'chat' ? [] : [kind]
+    tags: []
   };
   db.history.unshift(newHistory);
   return newHistory;
@@ -98,7 +98,7 @@ app.post('/api/history', (req, res) => {
     timestamp: req.body.timestamp || now,
     previewImages: req.body.previewImages || [],
     isPublic: !!req.body.isPublic,
-    tags: req.body.tags || []
+    tags: []
   };
   db.history.unshift(newItem);
   saveDb(db);

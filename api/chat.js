@@ -52,9 +52,9 @@ async function parseBody(req) {
     req.on('data', chunk => {
       bodySize += chunk.length;
       
-      // 🚨 Guard: Reject if body exceeds 5MB
+      // Guard: Reject if body exceeds 5MB
       if (bodySize > MAX_BODY_SIZE) {
-        console.error('❌ Request body too large:', (bodySize / 1024 / 1024).toFixed(2) + 'MB');
+        console.error('Request body too large:', (bodySize / 1024 / 1024).toFixed(2) + 'MB');
         req.destroy();
         reject(new Error('PAYLOAD_TOO_LARGE: Request body exceeds 5MB. Remove images/artifacts from messages.'));
         return;
@@ -64,7 +64,7 @@ async function parseBody(req) {
     });
     
     req.on('end', () => {
-      console.log('📊 Request body size:', (bodySize / 1024).toFixed(1) + 'KB');
+      console.log('Request body size:', (bodySize / 1024).toFixed(1) + 'KB');
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch {
@@ -105,6 +105,9 @@ Final output MUST be valid JSON ONLY, using the schema below.
 Use clear, logically structured natural language in the "reply" field.
 
 **Response Format Guidelines:**
+- The "reply" field MUST be plain text WITHOUT any markdown formatting (no **, __, *, #, etc.)
+- Use natural paragraph breaks and clear language structure instead of markdown
+- For emphasis or structure, use: line breaks, natural language transitions, or numbered/bulleted lists in plain text format
 - End each reply with a friendly confirmation question, such as:
   "Does this capture your thinking clearly? Feel free to add more details or adjust anything."
   "Is this the logic you had in mind? Let me know if you'd like to refine it further."
@@ -114,7 +117,7 @@ Use clear, logically structured natural language in the "reply" field.
 
 Required JSON schema:
 {
-  "reply": "<clear, logically structured natural language response>",
+  "reply": "<clear, logically structured natural language response in PLAIN TEXT without markdown>",
   "title": "<concise topic title, max 10 words>",
   "summary": "<2–3 sentences summarizing the user's clarified thinking>",
   "tags": ["<relevant tag>", "<relevant tag>", "<relevant tag>"],
@@ -271,12 +274,12 @@ async function detectAvailableImageModels() {
     );
     
     console.log('[ModelDetect] ========================================');
-    console.log('[ModelDetect] 📊 MODEL DETECTION RESULTS:');
+    console.log('[ModelDetect] MODEL DETECTION RESULTS:');
     console.log('[ModelDetect] Total models available:', modelNames.length);
     console.log('[ModelDetect] Imagen models (Vertex only):', imagenModels);
     console.log('[ModelDetect] Gemini Flash Image models:', geminiFlashModels);
     console.log('[ModelDetect] All image-capable models:', allImageModels);
-    console.log('[ModelDetect] ⚠️  NOTE: imagen-* models require Vertex AI, not supported by Gemini Developer API');
+    console.log('[ModelDetect] NOTE: imagen-* models require Vertex AI, not supported by Gemini Developer API');
     console.log('[ModelDetect] ========================================');
 
     availableImageModels = {
@@ -321,10 +324,10 @@ async function callGeminiFlashImage(prompt) {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
     console.log('[GeminiFlash] ======================================== REQUEST START');
-    console.log('[GeminiFlash] 🆔 Request ID:', requestId);
-    console.log('[GeminiFlash] 🎨 Model:', model);
-    console.log('[GeminiFlash] 🔗 Endpoint:', endpoint.replace(apiKey, 'API_KEY'));
-    console.log('[GeminiFlash] 📝 Prompt:', prompt.substring(0, 150) + '...');
+    console.log('[GeminiFlash] Request ID:', requestId);
+    console.log('[GeminiFlash] Model:', model);
+    console.log('[GeminiFlash] Endpoint:', endpoint.replace(apiKey, 'API_KEY'));
+    console.log('[GeminiFlash] Prompt:', prompt.substring(0, 150) + '...');
     
     // CRITICAL: Request configuration must explicitly request IMAGE output
     const requestBody = {
@@ -340,7 +343,7 @@ async function callGeminiFlashImage(prompt) {
       }
     };
     
-    console.log('[GeminiFlash] 📦 Request Body:', JSON.stringify(requestBody, null, 2));
+    console.log('[GeminiFlash] Request Body:', JSON.stringify(requestBody, null, 2));
 
     try {
       const response = await fetch(endpoint, {
@@ -350,11 +353,11 @@ async function callGeminiFlashImage(prompt) {
       });
 
       const duration = Date.now() - startTime;
-      console.log('[GeminiFlash] 🔹 Response:', response.status, response.statusText, `(${duration}ms)`);
+      console.log('[GeminiFlash] Response:', response.status, response.statusText, `(${duration}ms)`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[GeminiFlash] ❌ API Error Response:', errorText.substring(0, 500));
+        console.error('[GeminiFlash] API Error Response:', errorText.substring(0, 500));
         
         // Structured error log
         console.error(JSON.stringify({
@@ -377,7 +380,7 @@ async function callGeminiFlashImage(prompt) {
       const firstCandidate = candidates[0];
       const parts = firstCandidate?.content?.parts || [];
       
-      console.log('[GeminiFlash] 📊 Response Structure:');
+      console.log('[GeminiFlash] Response Structure:');
       console.log('  Candidates:', candidates.length);
       console.log('  Parts in first candidate:', parts.length);
       
@@ -431,10 +434,10 @@ async function callGeminiFlashImage(prompt) {
       duration
     };
     
-    console.log('[GeminiFlash] 📝 Structured Log:', JSON.stringify(logEntry, null, 2));
+    console.log('[GeminiFlash] Structured Log:', JSON.stringify(logEntry, null, 2));
     
     if (imageParts.length === 0) {
-      console.error('[GeminiFlash] ❌ NO IMAGE PARTS FOUND');
+      console.error('[GeminiFlash] NO IMAGE PARTS FOUND');
       console.error('[GeminiFlash] Full response (first 1000 chars):', JSON.stringify(data).substring(0, 1000));
       
       // Build detailed error message
@@ -459,7 +462,7 @@ async function callGeminiFlashImage(prompt) {
     const mimeType = firstImage.mimeType || 'image/png';
     const dataUrl = `data:${mimeType};base64,${base64Image}`;
     
-    console.log('[GeminiFlash] ✅ Successfully generated image');
+    console.log('[GeminiFlash] Successfully generated image');
     console.log('[GeminiFlash] MIME type:', mimeType);
     console.log('[GeminiFlash] Base64 length:', base64Image.length);
     console.log('[GeminiFlash] Data URL length:', dataUrl.length);
@@ -565,11 +568,11 @@ async function callImagen(prompt) {
 async function callGemini(messages, userText, customPrompt = null) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.error('[callGemini] ❌ GEMINI_API_KEY not configured');
+    console.error('[callGemini] GEMINI_API_KEY not configured');
     throw new Error('GEMINI_API_KEY not configured');
   }
 
-  console.log('[callGemini] 📝 Input:', {
+  console.log('[callGemini] Input:', {
     messagesCount: messages?.length || 0,
     userTextLength: userText?.length || 0,
     hasCustomPrompt: !!customPrompt
@@ -580,7 +583,7 @@ async function callGemini(messages, userText, customPrompt = null) {
   if (messages && messages.length > 0) {
     messages.forEach((msg, idx) => {
       if (!msg.sender || !msg.text) {
-        console.warn(`[callGemini] ⚠️ Message ${idx} missing fields:`, msg);
+        console.warn(`[callGemini] Message ${idx} missing fields:`, msg);
       }
       contents.push({
         role: msg.sender === 'user' ? 'user' : 'model',
@@ -597,7 +600,7 @@ async function callGemini(messages, userText, customPrompt = null) {
     });
   }
 
-  console.log('[callGemini] 📦 Request contents length:', contents.length);
+  console.log('[callGemini] Request contents length:', contents.length);
 
   const requestBody = {
     contents,
@@ -614,7 +617,7 @@ async function callGemini(messages, userText, customPrompt = null) {
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
-  console.log('[callGemini] 🌐 Calling Gemini API...');
+  console.log('[callGemini] Calling Gemini API...');
 
   const response = await fetch(url, {
     method: 'POST',
@@ -622,11 +625,11 @@ async function callGemini(messages, userText, customPrompt = null) {
     body: JSON.stringify(requestBody)
   });
 
-  console.log('[callGemini] 📡 Response status:', response.status);
+  console.log('[callGemini] Response status:', response.status);
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[callGemini] ❌ API error:', errorText.substring(0, 500));
+    console.error('[callGemini] API error:', errorText.substring(0, 500));
     throw new Error(`Gemini API error: ${response.status} - ${errorText.substring(0, 200)}`);
   }
 
@@ -634,11 +637,11 @@ async function callGemini(messages, userText, customPrompt = null) {
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   
   if (!text) {
-    console.error('[callGemini] ❌ No text in response:', JSON.stringify(data).substring(0, 500));
+    console.error('[callGemini] No text in response:', JSON.stringify(data).substring(0, 500));
     throw new Error('Gemini returned no text');
   }
 
-  console.log('[callGemini] ✅ Success, response length:', text.length);
+  console.log('[callGemini] Success, response length:', text.length);
   
   return text;
   
@@ -894,8 +897,8 @@ export default async function handler(req, res) {
             imageCapableModels: detectionResult.allModels || []
           },
           recommendation: detectionResult.hasGeminiFlash 
-            ? `✅ Use ${detectionResult.geminiFlashModel} for image generation`
-            : '❌ No image generation models available. Check API key permissions.',
+            ? `Use ${detectionResult.geminiFlashModel} for image generation`
+            : 'No image generation models available. Check API key permissions.',
           note: 'Imagen models (imagen-*) require Vertex AI and are NOT available via Gemini Developer API (generativelanguage.googleapis.com)'
         });
       } catch (error) {
@@ -962,7 +965,7 @@ export default async function handler(req, res) {
           imageCapableModels: imageModels,
           recommendedModels: recommendations,
           allModels: modelNames,
-          note: '⚠️ Imagen models (imagen-*) are Vertex AI only, NOT available via Gemini Developer API'
+          note: 'Imagen models (imagen-*) are Vertex AI only, NOT available via Gemini Developer API'
         });
         
       } catch (error) {
@@ -979,18 +982,18 @@ export default async function handler(req, res) {
         const { getChatSessions } = await import('./supabase.js');
         const sessions = await getChatSessions(actor);
         
-        console.log('[GET sessions] ✅ Loaded:', { count: sessions.length });
+        console.log('[GET sessions] Loaded:', { count: sessions.length });
         
         return res.status(200).json({ sessions });
       } catch (error) {
-        console.error('[GET sessions] ❌ Error:', error);
+        console.error('[GET sessions] Error:', error);
         return res.status(500).json({ error: 'Failed to load sessions', details: error.message });
       }
     }
 
     // ========== GET /api/chat?action=load - 从DB加载消息 ==========
     if (req.method === 'GET' && action === 'load') {
-      const sessionId = url.searchParams.get('sessionId');  // ✅ 修复：使用 URL params
+      const sessionId = url.searchParams.get('sessionId');  // 修复：使用 URL params
       
       if (!sessionId) {
         return res.status(400).json({ error: 'Missing sessionId parameter' });
@@ -1000,7 +1003,7 @@ export default async function handler(req, res) {
         const { getMessages } = await import('./supabase.js');
         const messages = await getMessages(sessionId);
         
-        console.log('[GET load] ✅ Loaded:', { sessionId, count: messages.length });
+        console.log('[GET load] Loaded:', { sessionId, count: messages.length });
         
         return res.status(200).json({ messages });
       } catch (error) {
@@ -1093,7 +1096,7 @@ export default async function handler(req, res) {
         // 构建完整消息列表返回
         const allMessages = [...messagesWithUser, botMessage];
 
-        console.log(`[${requestId}] [POST message] ✅ Saved to DB, returning:`, allMessages.length);
+        console.log(`[${requestId}] [POST message] Saved to DB, returning:`, allMessages.length);
 
         return res.status(200).json({
           messages: allMessages,
@@ -1181,7 +1184,7 @@ export default async function handler(req, res) {
             }
           });
           
-          console.log(`[${requestId}] ✅ Mindmap artifact saved:`, savedArtifact.id);
+          console.log(`[${requestId}] Mindmap artifact saved:`, savedArtifact.id);
 
           artifactResult = {
             kind: 'mindmap',
@@ -1224,9 +1227,9 @@ export default async function handler(req, res) {
               summary: 'AI generated image from conversation',
               imagePrompt: conversationText.substring(0, 500)
             };
-            console.log(`[${requestId}] ✅ Prompt generated: ${imageData.imagePrompt.substring(0, 100)}...`);
+            console.log(`[${requestId}] Prompt generated: ${imageData.imagePrompt.substring(0, 100)}...`);
           } catch (err) {
-            console.error(`[${requestId}] ❌ [Step 1/5] FAILED - Prompt generation error:`, err.message);
+            console.error(`[${requestId}] [Step 1/5] FAILED - Prompt generation error:`, err.message);
             return res.status(500).json({ 
               ok: false,
               error: 'Image prompt generation failed', 
@@ -1256,27 +1259,27 @@ export default async function handler(req, res) {
               imageUrl = await callGeminiFlashImage(imageData.imagePrompt);
               usedProvider = 'google-gemini';
               usedModel = 'gemini-2.5-flash-image';
-              console.log(`[${requestId}] ✅ Gemini Flash Image generated successfully`);
+              console.log(`[${requestId}] Gemini Flash Image generated successfully`);
             } else if (detectionResult.hasImagen) {
               console.log(`[${requestId}] Fallback to Imagen 4...`);
               imageUrl = await callImagen(imageData.imagePrompt);
               usedProvider = 'google-imagen';
               usedModel = 'imagen-4.0-generate-001';
-              console.log(`[${requestId}] ✅ Imagen 4 generated successfully`);
+              console.log(`[${requestId}] Imagen 4 generated successfully`);
             } else {
-              console.error(`[${requestId}] ❌ No image generation models available`);
+              console.error(`[${requestId}] No image generation models available`);
               throw new Error('No image generation models available (neither Gemini Flash nor Imagen)');
             }
             
-            // ✅ 验证生成的 imageUrl 是 data URL
+            // 验证生成的 imageUrl 是 data URL
             if (!imageUrl || !imageUrl.startsWith('data:image')) {
-              console.error(`[${requestId}] ❌ Invalid image data format:`, imageUrl?.substring(0, 100));
+              console.error(`[${requestId}] Invalid image data format:`, imageUrl?.substring(0, 100));
               throw new Error(`Invalid image data returned from ${usedModel}: expected data:image URL`);
             }
-            console.log(`[${requestId}] ✅ Image data validated (data:image format)`);
+            console.log(`[${requestId}] Image data validated (data:image format)`);
 
           } catch (error) {
-            console.error(`[${requestId}] ❌ [Step 3/5] FAILED - Image generation error:`, error.message);
+            console.error(`[${requestId}] [Step 3/5] FAILED - Image generation error:`, error.message);
             console.error(`[${requestId}] Error stack:`, error.stack);
             return res.status(500).json({ 
               ok: false,
@@ -1296,7 +1299,7 @@ export default async function handler(req, res) {
             // 提取 base64 数据
             const base64Match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
             if (!base64Match) {
-              console.error(`[${requestId}] ❌ Invalid data URL format`);
+              console.error(`[${requestId}] Invalid data URL format`);
               throw new Error('Invalid data URL format - cannot extract base64');
             }
             
@@ -1322,7 +1325,7 @@ export default async function handler(req, res) {
             publicUrl = uploadResult.publicUrl;
             storagePath = uploadResult.storagePath;
             
-            console.log(`[${requestId}] ✅ Upload complete:`, {
+            console.log(`[${requestId}] Upload complete:`, {
               publicUrl,
               storagePath,
               bucket: 'artifacts'
@@ -1330,12 +1333,12 @@ export default async function handler(req, res) {
             
             // 验证 publicUrl 格式
             if (!publicUrl || !publicUrl.startsWith('http')) {
-              console.error(`[${requestId}] ❌ Invalid publicUrl returned:`, publicUrl);
+              console.error(`[${requestId}] Invalid publicUrl returned:`, publicUrl);
               throw new Error('Supabase returned invalid publicUrl');
             }
             
           } catch (uploadError) {
-            console.error(`[${requestId}] ❌ [Step 4/5] FAILED - Storage upload error:`, uploadError.message);
+            console.error(`[${requestId}] [Step 4/5] FAILED - Storage upload error:`, uploadError.message);
             console.error(`[${requestId}] Error stack:`, uploadError.stack);
             return res.status(500).json({
               ok: false,
@@ -1361,16 +1364,16 @@ export default async function handler(req, res) {
                 summary: imageData.summary
               }
             });
-            console.log(`[${requestId}] ✅ Image artifact saved to DB:`, {
+            console.log(`[${requestId}] Image artifact saved to DB:`, {
               artifactId: savedArtifact.id,
               type: 'image',
               storagePath,
               publicUrl
             });
           } catch (dbError) {
-            console.error(`[${requestId}] ❌ [Step 5/5] FAILED - Database save error:`, dbError.message);
+            console.error(`[${requestId}] [Step 5/5] FAILED - Database save error:`, dbError.message);
             // 数据库保存失败但图片已上传，仍返回成功（降级处理）
-            console.warn(`[${requestId}] ⚠️ Continuing despite DB error - image is uploaded`);
+            console.warn(`[${requestId}] Continuing despite DB error - image is uploaded`);
           }
           
           // 构建返回数据（不包含base64）
@@ -1391,7 +1394,7 @@ export default async function handler(req, res) {
           // 验证不包含base64
           const payloadStr = JSON.stringify(artifactResult);
           if (payloadStr.includes('base64')) {
-            console.error(`[${requestId}] ❌ WARNING: base64 detected in artifact payload!`);
+            console.error(`[${requestId}] WARNING: base64 detected in artifact payload!`);
           }
           console.log(`[${requestId}] Artifact payload size:`, (payloadStr.length / 1024).toFixed(1), 'KB');
 
@@ -1411,7 +1414,7 @@ export default async function handler(req, res) {
         const response = {
           message: {
             id: `msg-${Date.now()}`,
-            text: `✅ ${kind} created successfully`,
+            text: `${kind} created successfully`,
             sender: 'bot',
             timestamp: new Date().toISOString()
           },
@@ -1430,10 +1433,10 @@ export default async function handler(req, res) {
         }
         
         if (kind === 'image' && artifactResult) {
-          // ✅ 验证 imageUrl 必须存在且可访问
+          // 验证 imageUrl 必须存在且可访问
           const imageUrl = artifactResult.payload.imageUrl;
           if (!imageUrl || !imageUrl.startsWith('http')) {
-            console.error(`[${requestId}] ❌ CRITICAL: Invalid imageUrl:`, imageUrl);
+            console.error(`[${requestId}] CRITICAL: Invalid imageUrl:`, imageUrl);
             return res.status(500).json({
               ok: false,
               error: 'Invalid image URL',
@@ -1442,7 +1445,7 @@ export default async function handler(req, res) {
             });
           }
           
-          // ✅ 统一的 artifact 响应结构
+          // 统一的 artifact 响应结构
           response.artifact = {
             type: 'image',
             title: artifactResult.payload.title || 'Generated Image',
@@ -1457,13 +1460,13 @@ export default async function handler(req, res) {
           // 向后兼容：保留 generatedImage 字段
           response.generatedImage = response.artifact;
           
-          // ✅ 标记成功
+          // 标记成功
           response.ok = true;
           
           // 验证响应中不包含 base64
           const responseStr = JSON.stringify(response);
           if (responseStr.includes('base64')) {
-            console.error(`[${requestId}] ❌ CRITICAL: base64 detected in response!`);
+            console.error(`[${requestId}] CRITICAL: base64 detected in response!`);
             return res.status(500).json({
               ok: false,
               error: 'Response validation failed',
@@ -1471,11 +1474,11 @@ export default async function handler(req, res) {
               requestId
             });
           }
-          console.log(`[${requestId}] ✅ Image response validated:`, imageUrl);
+          console.log(`[${requestId}] Image response validated:`, imageUrl);
           console.log(`[${requestId}] Response size:`, (responseStr.length / 1024).toFixed(1) + 'KB');
         }
 
-        console.log(`[${requestId}] ✅ Artifact ${kind} completed successfully`);
+        console.log(`[${requestId}] Artifact ${kind} completed successfully`);
         
         // ========== 只有 kind='save' 才保存到 chat_history (Archive) ==========
         if (kind === 'save') {

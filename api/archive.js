@@ -114,16 +114,17 @@ export default async function handler(req, res) {
         // ========== 自动生成新元素的位置信息 ==========
         const currentItems = existingArchive.content_json?.items || [];
         
-        // 固定高度配置
+        // 固定高度配置（作为 fallback）
         const FIXED_HEIGHTS = {
           image: 300,
           mindmap: 280,
-          text: 150
+          text: 150  // fallback值，前端应保存真实高度
         };
         
         // 遍历计算最大底部位置
         let maxBottom = 160;  // 默认起始位置
         currentItems.forEach(item => {
+          // ✅ 优先使用真实高度（数字），其次使用类型默认值
           const itemHeight = typeof item.height === 'number' 
             ? item.height 
             : (FIXED_HEIGHTS[item.type] || 300);

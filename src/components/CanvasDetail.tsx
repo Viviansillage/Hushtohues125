@@ -277,15 +277,40 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   };
 
   const handleSave = async () => {
+    // ✅ 计算所有 text 元素的真实高度（每次保存都重新计算，因为内容可能已改变）
+    const itemsWithRealHeights = items.map(item => {
+      if (item.type === 'text') {  // ← 移除条件，只要是text就重新计算
+        // 查找对应的 textarea DOM 元素
+        const textElement = document.querySelector(`[data-item-id="${item.id}"] textarea`) as HTMLTextAreaElement;
+        
+        if (textElement) {
+          const realHeight = textElement.scrollHeight;
+          console.log(`[Canvas Save] Calculated real height for ${item.id}:`, {
+            content: item.content.substring(0, 30) + '...',
+            realHeight,
+            previousHeight: item.height
+          });
+          return { ...item, height: realHeight };
+        } else {
+          // 如果找不到DOM（不应该发生），使用内容估算
+          const estimatedLines = Math.ceil(item.content.length / 40); // 假设每行40字符
+          const estimatedHeight = Math.max(estimatedLines * 48, 100); // 每行48px，最小100px
+          console.warn(`[Canvas Save] Could not find DOM for ${item.id}, using estimated height:`, estimatedHeight);
+          return { ...item, height: estimatedHeight };
+        }
+      }
+      return item;
+    });
+    
     const dataToSave = {
       title,
-      items,
+      items: itemsWithRealHeights,
       timestamp: new Date().toISOString()
     };
     
     // Save to localStorage
     localStorage.setItem(`canvas-${item.id}`, JSON.stringify(dataToSave));
-    savedStateRef.current = JSON.stringify({ title, items });
+    savedStateRef.current = JSON.stringify({ title, items: itemsWithRealHeights });
     setHasUnsavedChanges(false);
     
     // Also update the database if not in readOnly mode
@@ -303,6 +328,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     } else {
       toast.success('Canvas saved locally!', { className: 'handwritten font-bold' });
     }
+    
+    // ✅ 更新本地 state 为带真实高度的版本
+    setItems(itemsWithRealHeights);
   };
 
   const handleClose = () => {
@@ -809,7 +837,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
                     </div>
                   </div>
                 ) : (
-                  <div className="relative group/text pt-2 pb-2">
+                  <div className="relative group/text pt-2 pb-2" data-item-id={item.id}>
                      {/* Drag Handle for Text (visible on hover) */}
                      {!isPreview && !readOnly && (
                        <div className="absolute -top-6 left-0 px-2 py-1 bg-[#1a1a1a] text-[#f0ece1] text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-move pointer-events-none handwritten font-bold tracking-widest uppercase">

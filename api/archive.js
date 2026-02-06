@@ -16,6 +16,35 @@ function cleanMermaidCode(code) {
 }
 
 /**
+ * 估算文本高度
+ * @param {string} text - 文本内容
+ * @returns {number} 估算的高度（像素）
+ */
+function estimateTextHeight(text) {
+  if (!text) return 120;
+  
+  const lines = text.split('\n').length;
+  const avgCharsPerLine = 40;  // ✅ 减少到40（更保守）
+  const wrappedLines = Math.ceil(text.length / avgCharsPerLine);
+  const totalLines = Math.max(lines, wrappedLines);
+  
+  // ✅ 每行56px（增加），padding 80px（增加），再乘以1.1安全系数
+  const baseHeight = totalLines * 56 + 80;
+  const estimatedHeight = Math.max(Math.ceil(baseHeight * 1.1), 120);
+  
+  console.log('[Height Estimation]', {
+    textLength: text.length,
+    actualLines: lines,
+    wrappedLines,
+    totalLines,
+    baseHeight,
+    estimatedHeight
+  });
+  
+  return estimatedHeight;
+}
+
+/**
  * Archive Save API
  * 实现同一session只有一个archive记录，多次保存append到同一记录
  */
@@ -117,17 +146,24 @@ export default async function handler(req, res) {
         // 固定高度配置（作为 fallback）
         const FIXED_HEIGHTS = {
           image: 300,
-          mindmap: 280,
-          text: 150  // fallback值，前端应保存真实高度
+          mindmap: 280
         };
         
         // 遍历计算最大底部位置
         let maxBottom = 160;  // 默认起始位置
         currentItems.forEach(item => {
-          // ✅ 优先使用真实高度（数字），其次使用类型默认值
-          const itemHeight = typeof item.height === 'number' 
-            ? item.height 
-            : (FIXED_HEIGHTS[item.type] || 300);
+          let itemHeight;
+          
+          if (typeof item.height === 'number') {
+            // 已有真实高度
+            itemHeight = item.height;
+          } else if (item.height === 'auto' && item.type === 'text' && item.content) {
+            // height为'auto'的text，重新估算
+            itemHeight = estimateTextHeight(item.content);
+          } else {
+            // 其他情况使用固定高度
+            itemHeight = FIXED_HEIGHTS[item.type] || 300;
+          }
           
           const itemBottom = item.y + itemHeight;
           if (itemBottom > maxBottom) {
@@ -210,7 +246,7 @@ export default async function handler(req, res) {
             message_count: messageCount,
             last_message: preservedLastMessage,
             content_json: {
-              ...existingArchive.content_json,
+              ...existingArchive.content_json,  // ✅ 保留所有字段（savedMessages等）
               artifacts: updatedArtifacts,
               items: updatedItems,
               sessionId
@@ -378,6 +414,297 @@ export default async function handler(req, res) {
 
     } catch (error) {
       console.error('[Archive Save] Error:', error);
+      return res.status(500).json({
+        ok: false,
+        error: 'Internal server error',
+        details: error.message
+      });
+    }
+  }
+
+  // POST /api/archive?action=saveMessage - 保存消息（统一入口）
+  if (req.method === 'POST' && action === 'saveMessage') {
+    try {
+      const body = await parseBody(req);
+      const { sessionId, messageId, messageText, artifact } = body;
+
+      if (!sessionId || !messageId || !messageText) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Missing required fields',
+          details: 'sessionId, messageId, and messageText are required'
+        });
+      }
+
+      const actor = getActor(req);
+      console.log('[Archive SaveMessage] Request:', {
+        sessionId,
+        messageId,
+        hasArtifact: !!artifact,
+        artifactType: artifact?.type,
+        textLength: messageText.length
+      });
+
+      // 查找该session的archive
+      const { data: existingArchive, error: findError } = await supabase
+        .from('chat_history')
+        .select('*')
+        .eq('owner_type', actor.type)
+        .eq('owner_id', actor.id)
+        .eq('session_id', sessionId)
+        .maybeSingle();
+
+      if (findError) {
+        console.error('[Archive SaveMessage] Query error:', findError);
+        return res.status(500).json({
+          ok: false,
+          error: 'Database query failed',
+          details: findError.message
+        });
+      }
+
+      const currentItems = existingArchive?.content_json?.items || [];
+      const savedMessages = existingArchive?.content_json?.savedMessages || [];
+      
+      // 检查是否已保存过
+      if (savedMessages.includes(messageId)) {
+        console.log('[Archive SaveMessage] Message already saved:', messageId);
+        return res.json({
+          ok: true,
+          archiveId: existingArchive.id,
+          alreadySaved: true
+        });
+      }
+
+      // 固定高度配置
+      const FIXED_HEIGHTS = {
+        image: 300,
+        mindmap: 280
+      };
+
+      // 计算最大底部位置
+      let maxBottom = 160;
+      currentItems.forEach(item => {
+        let itemHeight;
+        
+        if (typeof item.height === 'number') {
+          // 已有真实高度
+          itemHeight = item.height;
+        } else if (item.height === 'auto' && item.type === 'text' && item.content) {
+          // height为'auto'的text，重新估算
+          itemHeight = estimateTextHeight(item.content);
+        } else {
+          // 其他情况使用固定高度
+          itemHeight = FIXED_HEIGHTS[item.type] || 300;
+        }
+        
+        const itemBottom = item.y + itemHeight;
+        if (itemBottom > maxBottom) {
+          maxBottom = itemBottom;
+        }
+      });
+
+      const newY = maxBottom + 120;
+      const newItems = [];
+
+      if (artifact) {
+        // 有artifact：保存artifact + summary文本
+        if (artifact.type === 'image') {
+          const imageCount = currentItems.filter(i => i.type === 'image').length;
+          newItems.push({
+            id: `img-${imageCount}`,
+            type: 'image',
+            content: artifact.data?.imageUrl,
+            x: 60,
+            y: newY,
+            width: 400,
+            height: 300,
+            zIndex: currentItems.length + newItems.length + 1
+          });
+        } else if (artifact.type === 'mindmap') {
+          const mindmapCount = currentItems.filter(i => i.type === 'mindmap').length;
+          newItems.push({
+            id: `mindmap-${mindmapCount}`,
+            type: 'mindmap',
+            content: cleanMermaidCode(artifact.data?.mermaidCode),
+            x: 60,
+            y: newY,
+            width: 420,
+            height: 280,
+            zIndex: currentItems.length + newItems.length + 1,
+            meta: {
+              title: artifact.data?.title,
+              summary: artifact.data?.summary
+            }
+          });
+        }
+
+        // 添加summary文本（右侧）
+        const summaryText = artifact.data?.summary || messageText;
+        if (summaryText.trim()) {
+          const textCount = currentItems.filter(i => i.type === 'text').length;
+          const estimatedHeight = estimateTextHeight(summaryText);
+          newItems.push({
+            id: `txt-${textCount}`,
+            type: 'text',
+            content: summaryText,
+            x: 520,
+            y: newY,
+            width: 400,
+            height: estimatedHeight,
+            zIndex: currentItems.length + newItems.length + 1
+          });
+        }
+      } else {
+        // 无artifact：只保存消息文本（更宽）
+        const textCount = currentItems.filter(i => i.type === 'text').length;
+        const estimatedHeight = estimateTextHeight(messageText);
+        newItems.push({
+          id: `txt-msg-${textCount}`,
+          type: 'text',
+          content: messageText,
+          x: 60,
+          y: newY,
+          width: 600,  // ← 更宽
+          height: estimatedHeight,
+          zIndex: currentItems.length + 1
+        });
+      }
+
+      const updatedItems = [...currentItems, ...newItems];
+      const updatedSavedMessages = [...savedMessages, messageId];
+
+      console.log('[Archive SaveMessage] Adding items:', {
+        newItemsCount: newItems.length,
+        totalItems: updatedItems.length,
+        savedMessagesCount: updatedSavedMessages.length
+      });
+
+      if (existingArchive) {
+        // 更新现有archive
+        const { data: updated, error: updateError } = await supabase
+          .from('chat_history')
+          .update({
+            content_json: {
+              ...existingArchive.content_json,  // ✅ 保留所有字段（artifacts等）
+              items: updatedItems,
+              savedMessages: updatedSavedMessages,
+              sessionId
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingArchive.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error('[Archive SaveMessage] Update error:', updateError);
+          return res.status(500).json({
+            ok: false,
+            error: 'Failed to update archive',
+            details: updateError.message
+          });
+        }
+
+        console.log('[Archive SaveMessage] ✅ Updated archive:', updated.id);
+        return res.json({
+          ok: true,
+          archiveId: updated.id,
+          messageId,
+          itemsAdded: newItems.length
+        });
+      } else {
+        // 创建新archive
+        const title = messageText.substring(0, 50) || 'Saved Messages';
+        const { data: created, error: createError } = await supabase
+          .from('chat_history')
+          .insert({
+            owner_type: actor.type,
+            owner_id: actor.id,
+            session_id: sessionId,
+            title,
+            message_count: 0,
+            last_message: messageText.substring(0, 200),
+            content_json: {
+              items: updatedItems,
+              savedMessages: updatedSavedMessages,
+              sessionId
+            },
+            tags: ['save'],
+            is_public: false
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('[Archive SaveMessage] Create error:', createError);
+          return res.status(500).json({
+            ok: false,
+            error: 'Failed to create archive',
+            details: createError.message
+          });
+        }
+
+        console.log('[Archive SaveMessage] ✅ Created archive:', created.id);
+        return res.json({
+          ok: true,
+          archiveId: created.id,
+          messageId,
+          itemsAdded: newItems.length
+        });
+      }
+    } catch (error) {
+      console.error('[Archive SaveMessage] Error:', error);
+      return res.status(500).json({
+        ok: false,
+        error: 'Internal server error',
+        details: error.message
+      });
+    }
+  }
+
+  // GET /api/archive?action=getSavedMessages - 获取已保存的消息ID列表
+  if (req.method === 'GET' && action === 'getSavedMessages') {
+    const sessionId = searchParams.get('sessionId');
+    if (!sessionId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing sessionId parameter'
+      });
+    }
+
+    try {
+      const actor = getActor(req);
+      
+      console.log('[Archive GetSavedMessages] Querying for:', {
+        owner_type: actor.type,
+        owner_id: actor.id,
+        session_id: sessionId
+      });
+      
+      const { data: archive } = await supabase
+        .from('chat_history')
+        .select('content_json')
+        .eq('owner_type', actor.type)
+        .eq('owner_id', actor.id)
+        .eq('session_id', sessionId)
+        .maybeSingle();
+
+      console.log('[Archive GetSavedMessages] Result:', {
+        found: !!archive,
+        hasSavedMessages: !!archive?.content_json?.savedMessages,
+        savedMessagesCount: archive?.content_json?.savedMessages?.length || 0,
+        savedMessages: archive?.content_json?.savedMessages
+      });
+
+      const savedMessages = archive?.content_json?.savedMessages || [];
+      
+      return res.json({
+        ok: true,
+        savedMessages
+      });
+    } catch (error) {
+      console.error('[Archive GetSavedMessages] Error:', error);
       return res.status(500).json({
         ok: false,
         error: 'Internal server error',

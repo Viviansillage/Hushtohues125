@@ -18,6 +18,7 @@ interface Message {
     artifactId?: string;  // 后端返回的artifactId
     saved?: boolean;      // 是否已保存到archive
   };
+  saved?: boolean;      // ← 新增：标记整条消息是否已保存到Canvas
   provider?: string;  // AI provider name (e.g., 'Google Gemini')
   model?: string;     // Model name (e.g., 'gemini-2.5-flash')
 }
@@ -163,7 +164,48 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         
         if (loadedMessages.length > 0) {
           console.log('[ChatPage] ✅ Restored', loadedMessages.length, 'messages from DB');
-          setMessages(loadedMessages);
+          
+          // ✅ 加载savedMessages列表，标记哪些消息已保存
+          try {
+            console.log('[ChatPage] 📋 Fetching saved messages for sessionId:', conversationId);
+            
+            const archiveResponse = await fetch(`/api/archive?action=getSavedMessages&sessionId=${conversationId}`, {
+              headers: {
+                'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+              }
+            });
+            
+            if (archiveResponse.ok) {
+              const archiveData = await archiveResponse.json();
+              const savedMessages = archiveData.savedMessages || [];
+              
+              console.log('[ChatPage] 📋 Saved messages received:', {
+                count: savedMessages.length,
+                ids: savedMessages
+              });
+              
+              // 标记已保存的消息
+              const messagesWithSavedStatus = loadedMessages.map(msg => ({
+                ...msg,
+                saved: savedMessages.includes(msg.id)
+              }));
+              
+              console.log('[ChatPage] ✅ Messages with saved status:', {
+                total: messagesWithSavedStatus.length,
+                savedCount: messagesWithSavedStatus.filter(m => m.saved).length,
+                sampleMessage: messagesWithSavedStatus[0]
+              });
+              
+              setMessages(messagesWithSavedStatus);
+            } else {
+              console.warn('[ChatPage] ⚠️ getSavedMessages failed:', archiveResponse.status);
+              setMessages(loadedMessages);
+            }
+          } catch (archiveError) {
+            console.warn('[ChatPage] ⚠️ Failed to load saved messages list:', archiveError);
+            setMessages(loadedMessages);
+          }
+          
           // ✅ NOT dirty - these are restored messages, don't auto-save
           isDirtyRef.current = false;
         } else {
@@ -314,6 +356,66 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     }
   };
 
+  // ✅ 统一的Save按钮处理函数
+  const handleSaveMessage = async (message: Message) => {
+    if (message.saved || (message.artifact && message.artifact.saved)) return;
+    
+    try {
+      console.log('[Save Message] Sending request:', {
+        messageId: message.id,
+        hasArtifact: !!message.artifact,
+        artifactType: message.artifact?.type,
+        sessionId: conversationId
+      });
+      
+      const response = await fetch('/api/archive?action=saveMessage', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
+        },
+        body: JSON.stringify({
+          sessionId: conversationId,
+          messageId: message.id,
+          messageText: message.text,
+          artifact: message.artifact  // 有artifact就传，没有就是undefined
+        })
+      });
+      
+      const result = await response.json();
+      console.log('[Save Message] Response:', result);
+      
+      if (response.ok && result.ok === true && result.archiveId) {
+        // 更新本地状态
+        const updated = messages.map(m => {
+          if (m.id === message.id) {
+            if (m.artifact) {
+              // 有artifact：标记artifact为saved
+              return { ...m, artifact: { ...m.artifact, saved: true } };
+            } else {
+              // 无artifact：标记消息为saved
+              return { ...m, saved: true };
+            }
+          }
+          return m;
+        });
+        setMessages(updated);
+        
+        const savedType = message.artifact?.type || 'message';
+        toast.success(`✅ ${savedType.charAt(0).toUpperCase() + savedType.slice(1)} saved to Canvas`);
+        
+        if (onHistorySync) {
+          onHistorySync();
+        }
+      } else {
+        throw new Error(result.error || 'Save validation failed');
+      }
+    } catch (err) {
+      console.error('[Save Message] Error:', err);
+      toast.error('Failed to save to Canvas');
+    }
+  };
+
   const handleArtifact = async (kind: string) => {
     setIsGeneratingArtifact(true);
     setArtifactType(kind);
@@ -413,35 +515,23 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   };
 
   const saveAllArtifactsInChat = async () => {
-    const textOnlyMessages = messages.map((message) => ({
-      id: message.id,
-      text: message.text,
-      sender: message.sender,
-      timestamp: message.timestamp.toISOString()
-    }));
-    const conversationSummary = textOnlyMessages
-      .slice(-5)
-      .map((message) => message.text)
-      .join(' ')
-      .trim();
-
+    // ✅ 只收集artifacts（image/mindmap），不再自动保存所有对话文本
     const artifactsToSave = messages
       .filter(
         (message) =>
           message.artifact?.data &&
           !message.artifact?.saved &&
-          (message.artifact.type === 'image' || message.artifact.type === 'mindmap' || message.artifact.type === 'save')
+          (message.artifact.type === 'image' || message.artifact.type === 'mindmap')
       )
       .map((message) => ({ messageId: message.id, artifact: message.artifact! }));
 
-    if (textOnlyMessages.length === 0 && artifactsToSave.length === 0) {
-      toast('No generated contents to save in this chat.', { className: 'handwritten font-bold' });
+    if (artifactsToSave.length === 0) {
+      toast('No unsaved artifacts to save in this chat.', { className: 'handwritten font-bold' });
       return true;
     }
 
     const guestId = getOrCreateGuestId();
     const savedMessageIds: string[] = [];
-    let savedText = false;
 
     const saveArtifact = async (artifact: { type: string; data: any }, messageId?: string) => {
       const response = await fetch('/api/archive?action=save', {
@@ -468,7 +558,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       const savedItems: string[] = [];
       const failures: any[] = [];
 
-      // 先保存所有artifacts（串行）
+      // 保存所有artifacts（串行）
       for (const { messageId, artifact } of artifactsToSave) {
         try {
           const result = await saveArtifact({ type: artifact.type, data: artifact.data }, messageId);
@@ -478,27 +568,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         } catch (error) {
           console.error(`❌ Failed to save artifact ${messageId}:`, error);
           failures.push({ messageId, error });
-        }
-      }
-
-      // 最后保存文本（如果有）
-      if (textOnlyMessages.length > 0) {
-        try {
-          await saveArtifact(
-            {
-              type: 'save',
-              data: {
-                summary: conversationSummary || textOnlyMessages[textOnlyMessages.length - 1]?.text || '',
-                messages: textOnlyMessages
-              }
-            },
-            undefined
-          );
-          savedText = true;
-          console.log('✅ Saved conversation text');
-        } catch (error) {
-          console.error('❌ Failed to save conversation text:', error);
-          failures.push({ type: 'text', error });
         }
       }
 
@@ -520,8 +589,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       if (onHistorySync) {
         onHistorySync();
       }
-      const totalSaved = savedMessageIds.length + (savedText ? 1 : 0);
-      toast.success(`✅ Saved ${totalSaved} item${totalSaved === 1 ? '' : 's'} to archive.`, {
+      const totalSaved = savedMessageIds.length;
+      toast.success(`✅ Saved ${totalSaved} artifact${totalSaved === 1 ? '' : 's'} to canvas.`, {
         className: 'handwritten font-bold'
       });
       return true;
@@ -713,78 +782,6 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                     {message.artifact.data.summary && (
                       <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
                     )}
-                    
-                    {/* 底部操作栏：右对齐 */}
-                    <div className="flex justify-end mt-4">
-                      <button
-                        onClick={async () => {
-                          if (message.artifact?.saved) return;
-                          try {
-                            console.log('[Mindmap Save] Sending request:', {
-                              sessionId: conversationId,
-                              artifactType: 'mindmap',
-                              guestId: localStorage.getItem('hushtohues_guest_id')
-                            });
-                            
-                            const response = await fetch('/api/archive?action=save', {
-                              method: 'POST',
-                              headers: { 
-                                'Content-Type': 'application/json',
-                                'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
-                              },
-                              body: JSON.stringify({
-                                sessionId: conversationId,
-                                artifact: {
-                                  type: 'mindmap',
-                                  data: message.artifact?.data
-                                }
-                              })
-                            });
-                            
-                            const result = await response.json();
-                            console.log('[Mindmap Save] Response:', {
-                              status: response.status,
-                              ok: result.ok,
-                              archiveId: result.archiveId,
-                              totalArtifacts: result.totalArtifacts,
-                              actor: result.actor,
-                              sessionId: result.sessionId
-                            });
-                            
-                            // 严格校验：只有 ok=true 且有 archiveId 才算成功
-                            if (response.ok && result.ok === true && result.archiveId) {
-                              const updated = messages.map(m => 
-                                m.id === message.id && m.artifact
-                                  ? { ...m, artifact: { ...m.artifact, saved: true } }
-                                  : m
-                              );
-                              setMessages(updated);
-                              toast.success('✅ Mindmap saved to archive');
-                              // 立即刷新 History
-                              if (onHistorySync) {
-                                console.log('[Mindmap Save] Triggering history refresh');
-                                onHistorySync();
-                              }
-                            } else {
-                              console.error('[Mindmap Save] Failed:', result.error || 'Invalid response');
-                              throw new Error(result.error || 'Save validation failed');
-                            }
-                        } catch (err) {
-                          console.error('[Mindmap Save] Error:', err);
-                          toast.error('Failed to save mindmap');
-                        }
-                      }}
-                      disabled={message.artifact?.saved}
-                      className={`px-4 py-2 text-sm font-bold transition-all border-[2.5px] border-[#1a1a1a] hand-drawn-border ${
-                        message.artifact?.saved
-                          ? 'bg-[#e8e4d9] text-[#6d6d6d] cursor-not-allowed opacity-60'
-                          : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] hover:translate-y-[-1px]'
-                      }`}
-                      style={{ minWidth: '80px' }}
-                    >
-                      {message.artifact?.saved ? '✓ Saved' : 'Save'}
-                    </button>
-                    </div>
                   </div>
                 )}
 
@@ -832,84 +829,12 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                         model={message.artifact.data.model || 'unknown'}
                       </div>
                     )}
-                    {message.artifact.data.prompt && (
+                    {message.prompt && (
                       <details className="mt-2">
                         <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">View prompt</summary>
                         <p className="mt-1 text-xs text-gray-600 bg-gray-50 p-2 rounded">{message.artifact.data.prompt}</p>
                       </details>
                     )}
-                    
-                    {/* 底部操作栏：右对齐 */}
-                    <div className="flex justify-end mt-4">
-                      <button
-                        onClick={async () => {
-                          if (message.artifact?.saved) return;
-                          try {
-                            console.log('[Image Save] Sending request:', {
-                              sessionId: conversationId,
-                              artifactType: 'image',
-                              guestId: localStorage.getItem('hushtohues_guest_id')
-                            });
-                            
-                            const response = await fetch('/api/archive?action=save', {
-                              method: 'POST',
-                              headers: { 
-                                'Content-Type': 'application/json',
-                                'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
-                              },
-                              body: JSON.stringify({
-                                sessionId: conversationId,
-                                artifact: {
-                                  type: 'image',
-                                  data: message.artifact?.data
-                                }
-                              })
-                            });
-                            
-                              const result = await response.json();
-                            console.log('[Image Save] Response:', {
-                              status: response.status,
-                              ok: result.ok,
-                              archiveId: result.archiveId,
-                              totalArtifacts: result.totalArtifacts,
-                              actor: result.actor,
-                              sessionId: result.sessionId
-                            });
-                            
-                            // 严格校验：只有 ok=true 且有 archiveId 才算成功
-                            if (response.ok && result.ok === true && result.archiveId) {
-                              const updated = messages.map(m => 
-                                m.id === message.id && m.artifact
-                                  ? { ...m, artifact: { ...m.artifact, saved: true } }
-                                  : m
-                              );
-                              setMessages(updated);
-                              toast.success('✅ Image saved to archive');
-                              // 立即刷新 History
-                              if (onHistorySync) {
-                                console.log('[Image Save] Triggering history refresh');
-                                onHistorySync();
-                              }
-                            } else {
-                              console.error('[Image Save] Failed:', result.error || 'Invalid response');
-                              throw new Error(result.error || 'Save validation failed');
-                            }
-                          } catch (err) {
-                            console.error('[Image Save] Error:', err);
-                            toast.error('Failed to save image');
-                          }
-                        }}
-                        disabled={message.artifact?.saved}
-                        className={`px-4 py-2 text-sm font-bold transition-all border-[2.5px] border-[#1a1a1a] hand-drawn-border ${
-                          message.artifact?.saved
-                            ? 'bg-[#e8e4d9] text-[#6d6d6d] cursor-not-allowed opacity-60'
-                            : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] hover:translate-y-[-1px]'
-                        }`}
-                        style={{ minWidth: '80px' }}
-                      >
-                        {message.artifact?.saved ? '✓ Saved' : 'Save'}
-                      </button>
-                    </div>
                   </div>
                 )}
                 
@@ -932,9 +857,26 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                   </div>
                 )}
                 
-                <span className="text-xs text-[#6d6d6d] mt-2 block">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
+                {/* ✅ 统一Save按钮 - 所有bot消息都显示 */}
+                {message.sender === 'bot' && (
+                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-dashed border-gray-300">
+                    <span className="text-xs text-[#6d6d6d]">
+                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    
+                    <button
+                      onClick={() => handleSaveMessage(message)}
+                      disabled={message.saved || message.artifact?.saved}
+                      className={`px-3 py-1 text-xs font-bold transition-all border-[2px] border-[#1a1a1a] hand-drawn-border ${
+                        message.saved || message.artifact?.saved
+                          ? 'bg-[#e8e4d9] text-[#6d6d6d] cursor-not-allowed opacity-60'
+                          : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] hover:translate-y-[-1px]'
+                      }`}
+                    >
+                      {message.saved || message.artifact?.saved ? '✓ Saved' : 'Save'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

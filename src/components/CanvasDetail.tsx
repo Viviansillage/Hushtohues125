@@ -22,6 +22,10 @@ export interface CanvasItem {
     title?: string;
     items?: DraggableItem[];
     timestamp?: string;
+    savedMessages?: string[];  // ← 新增：记录已保存的消息ID
+    sessionId?: string;        // ← 新增：保留sessionId
+    artifacts?: any[];         // ← 新增：保留artifacts
+    [key: string]: any;        // ← 新增：允许其他字段
   };
 }
 
@@ -316,9 +320,32 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     // Also update the database if not in readOnly mode
     if (!readOnly) {
       try {
+        // ✅ 先获取现有的content_json，保留其他字段（如savedMessages）
+        const currentContentJson = item.contentJson || {};
+        
+        console.log('[Canvas Save] Current contentJson:', {
+          hasSavedMessages: !!currentContentJson.savedMessages,
+          savedMessagesCount: currentContentJson.savedMessages?.length || 0,
+          savedMessages: currentContentJson.savedMessages
+        });
+        
+        const updatedContentJson = {
+          ...currentContentJson,  // ← 保留现有字段（savedMessages, artifacts等）
+          title,
+          items: itemsWithRealHeights,
+          timestamp: new Date().toISOString()
+        };
+        
+        console.log('[Canvas Save] Updated contentJson:', {
+          hasSavedMessages: !!updatedContentJson.savedMessages,
+          savedMessagesCount: updatedContentJson.savedMessages?.length || 0,
+          savedMessages: updatedContentJson.savedMessages,
+          itemsCount: updatedContentJson.items.length
+        });
+        
         await updateHistoryItem(item.id, {
           title,
-          contentJson: dataToSave
+          contentJson: updatedContentJson
         });
         toast.success('Canvas saved!', { className: 'handwritten font-bold' });
       } catch (error) {

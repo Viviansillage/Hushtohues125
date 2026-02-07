@@ -2,6 +2,11 @@
 import { getCommunityDetail, followCommunity, unfollowCommunity } from '../lib/api';
 import { CanvasDetail, CanvasItem } from './CanvasDetail';
 
+const SYSTEM_TAGS = new Set(['save', 'image', 'mindmap', 'auto-saved']);
+
+const filterSemanticTags = (tags: string[] = []) =>
+  tags.filter((tag) => !SYSTEM_TAGS.has(tag.toLowerCase()));
+
 interface CommunityDetailProps {
   postId: string;  // ✅ community_posts.id (uuid)
   onBack: () => void;
@@ -32,6 +37,8 @@ export function CommunityDetailPage({ postId, onBack }: CommunityDetailProps) {
           readOnly: response.detail.readOnly
         });
 
+        const semanticTags = filterSemanticTags(response.detail.tags || []);
+
         const item: CanvasItem = {
           id: response.detail.sessionId,
           title: response.detail.title,
@@ -39,7 +46,7 @@ export function CommunityDetailPage({ postId, onBack }: CommunityDetailProps) {
           mindmaps: response.detail.mindmaps || [],
           content: response.detail.content || '',
           contentJson: response.detail.contentJson || null,  // ✅ Pass contentJson with layout
-          tags: response.detail.tags || [],
+          tags: semanticTags,
           isPublic: response.detail.isPublic,
           author: response.detail.author,
           stats: response.detail.stats
@@ -47,7 +54,7 @@ export function CommunityDetailPage({ postId, onBack }: CommunityDetailProps) {
 
         setCanvasData(item);
         setIsJoined(response.joined);
-        setCommunityName(response.detail.communityName || item.tags?.[0] || 'General');
+        setCommunityName(response.detail.communityName || semanticTags[0] || 'General');
         
       } catch (error) {
         console.error('[CommunityDetailPage] ❌ Failed to load, postId:', postId, 'error:', error);

@@ -13,6 +13,164 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+// =====================
+// Semantic Tag Utilities
+// =====================
+
+const SYSTEM_TAGS = new Set(['save', 'image', 'mindmap', 'auto-saved']);
+
+const cleanTextValue = (value) => {
+  if (!value) return '';
+  const text = String(value).trim();
+  if (!text) return '';
+  if (text.toLowerCase() === 'type something...') return '';
+  return text;
+};
+
+export const filterSystemTags = (tags = []) => {
+  if (!Array.isArray(tags)) return [];
+  return tags.filter((tag) => !SYSTEM_TAGS.has(String(tag).toLowerCase()));
+};
+
+export const hasLegacySystemTags = (tags = []) => {
+  if (!Array.isArray(tags)) return false;
+  return tags.some((tag) => SYSTEM_TAGS.has(String(tag).toLowerCase()));
+};
+
+export const extractCanvasText = (contentJson = {}, title = '') => {
+  const chunks = [];
+
+  if (contentJson && Array.isArray(contentJson.items)) {
+    contentJson.items.forEach((item) => {
+      if (!item) return;
+      if (item.type === 'text' && item.content) {
+        const cleaned = cleanTextValue(item.content);
+        if (cleaned) chunks.push(cleaned);
+      }
+      if (item.type === 'mindmap' && item.meta) {
+        const titleText = cleanTextValue(item.meta.title);
+        const summaryText = cleanTextValue(item.meta.summary);
+        if (titleText) chunks.push(titleText);
+        if (summaryText) chunks.push(summaryText);
+      }
+    });
+  }
+
+  if (chunks.length === 0 && contentJson) {
+    const contentText = cleanTextValue(contentJson.content);
+    if (contentText) chunks.push(contentText);
+
+    if (Array.isArray(contentJson.messages)) {
+      contentJson.messages.forEach((message) => {
+        if (!message) return;
+        const msgText = cleanTextValue(message.text || message.content);
+        if (msgText) chunks.push(msgText);
+      });
+    }
+  }
+
+  const cleanedTitle = cleanTextValue(title);
+  if (chunks.length === 0 && cleanedTitle) chunks.push(cleanedTitle);
+
+  const combined = chunks.join('\n').trim();
+  if (!combined) return '';
+  return combined.length > 4000 ? combined.slice(0, 4000) : combined;
+};
+
+export const normalizeTags = (tags = []) => {
+  if (!Array.isArray(tags)) return [];
+  const normalized = [];
+  const seen = new Set();
+
+  tags.forEach((raw) => {
+    if (typeof raw !== 'string') return;
+    let tag = raw.trim();
+    if (!tag) return;
+
+    tag = tag.replace(/^#+/, '');
+    tag = tag.replace(/[\s_]+/g, '-');
+    tag = tag.replace(/[^\p{L}\p{N}-]+/gu, '');
+    tag = tag.replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+    if (!tag) return;
+
+    if (/[A-Za-z]/.test(tag)) {
+      tag = tag.toLowerCase();
+    }
+
+    if (tag.length > 40) {
+      tag = tag.slice(0, 40);
+    }
+
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key) || SYSTEM_TAGS.has(key)) return;
+
+    seen.add(key);
+    normalized.push(tag);
+  });
+
+  return normalized;
+};
+
+const parseTagJson = (text) => {
+  if (!text || typeof text !== 'string') return null;
+  let cleaned = text.trim();
+
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  }
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.warn('[Tagging] Failed to parse JSON:', error);
+    return null;
+  }
+};
+
+export const generateSemanticTags = async (text) => {
+  if (!text || !text.trim()) return [];
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn('[Tagging] GEMINI_API_KEY not configured');
+    return [];
+  }
+
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const prompt = `You generate concise semantic tags for the given text.
+Return ONLY JSON in the format: {"tags":["tag-one","tag-two","tag-three"]}.
+Rules:
+- Exactly 3 tags if possible.
+- Same language as the input text.
+- Kebab-case (use hyphens instead of spaces).
+- No # symbol, no duplicates, no extra fields.
+
+Text:
+${text}
+
+JSON:`;
+
+    const result = await model.generateContent(prompt);
+    const responseText = result?.response?.text?.() || '';
+    const parsed = parseTagJson(responseText);
+    const normalized = normalizeTags(parsed?.tags || []);
+    return normalized.slice(0, 3);
+  } catch (error) {
+    console.warn('[Tagging] Gemini request failed:', error?.message || error);
+    return [];
+  }
+};
+
 /**
  * 上传图片到 Supabase Storage
  * @param {string} base64Data - Base64 编码的图片数据（不含 data:image/... 前缀）
@@ -765,4 +923,3 @@ export async function getArtifacts(sessionId) {
     return [];
   }
 }
-

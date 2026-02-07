@@ -2,6 +2,11 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CanvasDetail } from './CanvasDetail';
 
+const SYSTEM_TAGS = new Set(['save', 'image', 'mindmap', 'auto-saved']);
+
+const filterSemanticTags = (tags: string[] = []) =>
+  tags.filter((tag) => !SYSTEM_TAGS.has(tag.toLowerCase()));
+
 // --- Types ---
 
 export interface Post {
@@ -441,7 +446,7 @@ export function CommunityPage({
                         
                         {/* Tags */}
                         <div className="flex flex-wrap gap-2 mb-4">
-                          {post.tags.map((tag) => (
+                          {filterSemanticTags(post.tags).map((tag) => (
                             <span
                               key={tag}
                               className="px-2 py-1 border-[1.5px] border-[#1a1a1a] text-xs font-bold hand-drawn-border bg-white hover:bg-[#e8e4d9] transition-colors uppercase tracking-wide"

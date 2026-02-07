@@ -1,4 +1,4 @@
-import { getHistory, getActor, supabase } from './supabase.js';
+import { getHistory, getActor, supabase, extractCanvasText, filterSystemTags, generateSemanticTags, hasLegacySystemTags } from './supabase.js';
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -47,13 +47,12 @@ export default async function handler(req, res) {
           owner_id: actor.id
         });
         
-        // 查询当前 actor 的 archive（只返回 artifact：mindmap/image/save）
+        // 查询当前 actor 的 archive（由 content_json 决定是否展示）
         const { data, error } = await supabase
           .from('chat_history')
           .select('*')
           .eq('owner_type', actor.type)
           .eq('owner_id', actor.id)
-          .or('tags.cs.{mindmap},tags.cs.{image},tags.cs.{save}')  // 只返回有 artifact 标记的
           .order('timestamp', { ascending: false });
 
         if (error) {
@@ -72,26 +71,37 @@ export default async function handler(req, res) {
           });
         }
         
+        const hasArchiveContent = (item) => {
+          const items = item?.content_json?.items;
+          const artifacts = item?.content_json?.artifacts;
+          const hasItems = Array.isArray(items) && items.length > 0;
+          const hasArtifacts = Array.isArray(artifacts) && artifacts.length > 0;
+          const tags = Array.isArray(item?.tags) ? item.tags : [];
+          return hasItems || hasArtifacts || hasLegacySystemTags(tags);
+        };
+
         // 健壮地解析每条记录，跳过坏数据
-        const history = (data || []).map(item => {
-          try {
-            return {
-              id: item.id,
-              sessionId: item.session_id,  // ✅ 关键：返回 sessionId
-              title: item.title || 'Untitled',
-              messageCount: item.message_count || 0,
-              lastMessage: item.last_message || '',
-              previewImages: Array.isArray(item.preview_images) ? item.preview_images : [],
-              isPublic: item.is_public || false,
-              tags: Array.isArray(item.tags) ? item.tags : [],
-              timestamp: item.timestamp || new Date().toISOString(),
-              isDemo: item.is_demo || false
-            };
-          } catch (parseError) {
-            console.error(`[${requestId}] [history.js] Failed to parse item ${item.id}:`, parseError.message);
-            return null;
-          }
-        }).filter(item => item !== null);
+        const history = (data || [])
+          .filter(hasArchiveContent)
+          .map(item => {
+            try {
+              return {
+                id: item.id,
+                sessionId: item.session_id,  // ✅ 关键：返回 sessionId
+                title: item.title || 'Untitled',
+                messageCount: item.message_count || 0,
+                lastMessage: item.last_message || '',
+                previewImages: Array.isArray(item.preview_images) ? item.preview_images : [],
+                isPublic: item.is_public || false,
+                tags: filterSystemTags(Array.isArray(item.tags) ? item.tags : []),
+                timestamp: item.timestamp || new Date().toISOString(),
+                isDemo: item.is_demo || false
+              };
+            } catch (parseError) {
+              console.error(`[${requestId}] [history.js] Failed to parse item ${item.id}:`, parseError.message);
+              return null;
+            }
+          }).filter(item => item !== null);
         
         console.log(`[${requestId}] [history.js] Successfully parsed ${history.length} items`);
         
@@ -109,7 +119,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       // 保存 archive（guest 也允许）
       const body = await parseBody(req);
-      const { title, content, messages, tags, previewImages } = body;
+      const { title, content, messages, previewImages } = body;
       
       if (!title) {
         return res.status(400).json({ error: 'Title is required' });
@@ -129,7 +139,7 @@ export default async function handler(req, res) {
           message_count: messages?.length || 0,
           last_message: messages?.[messages.length - 1]?.content || content || '',
           preview_images: previewImages || [],
-          tags: tags || [],
+          tags: [],
           content_json: { messages, content },
           is_demo: actor.type === 'guest',
           expires_at: expiresAt,
@@ -215,10 +225,20 @@ async function handleHistoryById(req, res, id) {
 
       // 更新 chat_history
       const updates = {};
+      let publishTags = null;
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
-      if (body.tags !== undefined) updates.tags = body.tags;
       if (body.contentJson !== undefined) updates.content_json = body.contentJson;
+
+      if (body.isPublic === true) {
+        const contentForTags = body.contentJson ?? item.content_json ?? {};
+        const titleForTags = body.title ?? item.title ?? 'Untitled';
+        const canvasText = extractCanvasText(contentForTags, titleForTags);
+        publishTags = await generateSemanticTags(canvasText);
+        updates.tags = publishTags;
+      } else if (body.tags !== undefined) {
+        updates.tags = filterSystemTags(body.tags);
+      }
 
       const { data, error } = await supabase
         .from('chat_history')
@@ -277,6 +297,10 @@ async function handleHistoryById(req, res, id) {
           // ✅ 确保 created_at 有值
           const createdAt = item.created_at || item.timestamp || new Date().toISOString();
           
+          const tagsForPublish = Array.isArray(publishTags)
+            ? publishTags
+            : filterSystemTags(data.tags || []);
+
           console.log('[history/[id]] Upserting to community_posts:', {
             session_id: item.session_id,
             author_type: publishActor.type || 'guest',
@@ -296,7 +320,7 @@ async function handleHistoryById(req, res, id) {
               is_public: true,
               cover_image_url: coverImage || null,
               title: data.title || 'Untitled',
-              tags: data.tags || [],
+              tags: tagsForPublish,
               created_at: createdAt,
               updated_at: new Date().toISOString()
             }, {
@@ -350,7 +374,7 @@ async function handleHistoryById(req, res, id) {
         timestamp: data.timestamp,
         previewImages: data.preview_images || [],
         isPublic: data.is_public,
-        tags: data.tags || []
+        tags: filterSystemTags(data.tags || [])
       });
     }
 
@@ -380,7 +404,7 @@ async function handleHistoryById(req, res, id) {
         timestamp: data.timestamp,
         previewImages: data.preview_images || [],
         isPublic: data.is_public,
-        tags: data.tags || [],
+        tags: filterSystemTags(data.tags || []),
         contentJson: data.content_json,
         artifacts: data.content_json?.artifacts || []
       });

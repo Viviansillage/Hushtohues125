@@ -780,8 +780,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
                       </h3>
                     </div>
                     
-                    {/* 主内容区 */}
-                    <div className="bg-white rounded-lg p-4 overflow-x-auto">
+                    {/* 主内容区 - 宽固定(420px)，高度自适应保持比例 */}
+                    <div className="bg-white rounded-lg p-4 w-full max-w-[420px] overflow-x-hidden overflow-y-auto">
                       <MermaidMindmap 
                         mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
                         id={message.id}

@@ -142,20 +142,15 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
         startOnLoad: false,
         theme: 'default',
         securityLevel: 'loose',
-        mindmap: {
-          padding: 20,
-          useMaxWidth: true
-        }
+        mindmap: { padding: 20, useMaxWidth: true }
       });
 
       const renderMindmap = async () => {
         try {
-          // 清理旧数据中的嵌套括号：将 (( )) 内的半角括号转为全角
           const cleanedCode = mermaidCode.replace(/\(\(([\s\S]*?)\)\)/g, (_, inner) => {
             const safe = inner.replace(/\(/g, '（').replace(/\)/g, '）');
             return `((${safe}))`;
           });
-          
           const { svg } = await mermaid.render(`archive-mermaid-${id}`, cleanedCode);
           if (mermaidRef.current) {
             mermaidRef.current.innerHTML = svg;
@@ -261,7 +256,7 @@ const DraggableCanvasItemCard = ({
           width: item.width,
           height: item.type === 'text' ? 'auto' : item.height,
         }}
-        lockAspectRatio={item.type === 'image'}
+        lockAspectRatio={item.type === 'image' || item.type === 'mindmap'}
         onResizeStart={() => {
           if (containerRef.current) {
             scrollRestoreRef.current = containerRef.current.scrollTop;
@@ -296,7 +291,7 @@ const DraggableCanvasItemCard = ({
         }}
         handleClasses={{
           ...(item.type === 'text' && { right: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a]/20 w-2 h-full absolute right-0 top-0 transition-opacity rounded-full` }),
-          ...(item.type !== 'text' && { bottomRight: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a] w-4 h-4 rounded-full absolute right-0 bottom-0 translate-x-1/2 translate-y-1/2 z-10 transition-opacity border-2 border-[#f0ece1]` }),
+          ...((item.type === 'image' || item.type === 'mindmap') && { bottomRight: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a] w-4 h-4 rounded-full absolute right-0 bottom-0 translate-x-1/2 translate-y-1/2 z-10 transition-opacity border-2 border-[#f0ece1]` }),
         }}
       >
         <div
@@ -316,17 +311,12 @@ const DraggableCanvasItemCard = ({
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-32 h-10 bg-[#fdfbf7] opacity-90 rotate-2 shadow-sm border border-[#1a1a1a]/10" style={{ clipPath: 'polygon(5% 0%, 95% 0%, 100% 5%, 100% 95%, 95% 100%, 5% 100%, 0% 95%, 0% 5%)', maskImage: 'linear-gradient(45deg, transparent 5px, black 5px)' }} />
             </div>
           ) : item.type === 'mindmap' ? (
-            <div className={`relative p-4 bg-white shadow-lg h-full ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
+            <div className={`relative p-1 bg-white shadow-lg h-full ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
               <div className="absolute inset-0 border-[3px] border-[#1a1a1a] pointer-events-none" style={{ borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px', filter: 'url(#hand-drawn-border)' }} />
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">🧠</span>
-                  <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">{item.meta?.title || 'Mindmap'}</h3>
-                </div>
-                <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
+              <div className="w-full h-full p-2 overflow-hidden flex items-center justify-center" style={{ borderRadius: '2px' }}>
+                <div className="canvas-mindmap-fit w-full h-full">
                   <MermaidMindmap mermaidCode={item.content || 'mindmap\n  root((Empty))'} id={item.id} />
                 </div>
-                {item.meta?.summary && <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>}
               </div>
             </div>
           ) : (

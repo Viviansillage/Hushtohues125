@@ -61,6 +61,7 @@ export default function App() {
   const [recommendedCommunities, setRecommendedCommunities] = useState<CommunityTag[]>([]);
   const [likedPosts, setLikedPosts] = useState<string[]>([]);
   const [bookmarkedPosts, setBookmarkedPosts] = useState<string[]>([]);
+  const [communityActiveTab, setCommunityActiveTab] = useState<'following' | 'discover'>('following');
 
   useEffect(() => {
     let isMounted = true;
@@ -571,6 +572,8 @@ export default function App() {
           )}
           {currentPage === 'community' && (
             <CommunityPage
+              activeTab={communityActiveTab}
+              onActiveTabChange={setCommunityActiveTab}
               onNavigateToCommunity={handleNavigateToCommunity}
               posts={allDiscoverPosts}
               likedPosts={likedPosts}

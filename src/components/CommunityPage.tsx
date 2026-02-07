@@ -33,6 +33,8 @@ export interface CommunityTag {
 }
 
 interface CommunityPageProps {
+  activeTab?: 'following' | 'discover';
+  onActiveTabChange?: (tab: 'following' | 'discover') => void;
   onNavigateToCommunity?: (postId: string) => void;  // ✅ postId is community_posts.id
   posts: Post[];
   likedPosts: string[];
@@ -48,6 +50,8 @@ interface CommunityPageProps {
 // --- Components ---
 
 export function CommunityPage({
+  activeTab: controlledTab,
+  onActiveTabChange,
   onNavigateToCommunity,
   posts,
   likedPosts,
@@ -59,7 +63,9 @@ export function CommunityPage({
   onFollowCommunity,
   onUnfollowCommunity
 }: CommunityPageProps) {
-  const [activeTab, setActiveTab] = useState<'following' | 'discover'>('following');
+  const [internalTab, setInternalTab] = useState<'following' | 'discover'>('following');
+  const activeTab = controlledTab ?? internalTab;
+  const setActiveTab = onActiveTabChange ?? setInternalTab;
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const likedSet = useMemo(() => new Set(likedPosts), [likedPosts]);
   const bookmarkedSet = useMemo(() => new Set(bookmarkedPosts), [bookmarkedPosts]);

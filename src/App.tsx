@@ -25,6 +25,7 @@ import {
   updateHistoryItem,
   updateProfile
 } from './lib/api';
+import { getGuestDisplayName } from './lib/guest';
 
 const mapHistory = (item: ApiHistoryItem): ChatHistory => ({
   ...item,
@@ -74,7 +75,15 @@ export default function App() {
 
         if (!isMounted) return;
 
-        setProfile(profileData);
+        // Guest 无帖子时 API 返回默认名，用 localStorage 兜底
+        let mergedProfile = profileData;
+        if (profileData.isGuest && /^Guest-[a-z0-9]+$/i.test(profileData.userName)) {
+          const savedName = getGuestDisplayName();
+          if (savedName) {
+            mergedProfile = { ...profileData, userName: savedName };
+          }
+        }
+        setProfile(mergedProfile);
         setHistory(historyData.map(mapHistory));
         
         // 加载聊天会话
@@ -171,10 +180,15 @@ export default function App() {
     );
 
     try {
-      await updateHistoryItem(id, {
+      const apiPayload: Partial<ApiHistoryItem> = {
         ...updates,
         timestamp: updates.timestamp ? updates.timestamp.toISOString() : undefined
-      } as Partial<ApiHistoryItem>);
+      } as Partial<ApiHistoryItem>;
+      if (updates.isPublic === true) {
+        const displayName = profile?.userName || getGuestDisplayName();
+        if (displayName) apiPayload.authorDisplayName = displayName;
+      }
+      await updateHistoryItem(id, apiPayload);
       
       // ✅ If isPublic was changed, refresh Discover feed
       if (updates.isPublic !== undefined) {
@@ -259,6 +273,13 @@ export default function App() {
       const updated = await updateProfile(payload);
       setProfile(updated);
       console.log('[App] Profile updated successfully:', updated.userName);
+      // 刷新 Discover 列表，使改名后作者名立即更新
+      try {
+        const postData = await getDiscoverFeed();
+        setCommunityPosts(postData.map(mapPost));
+      } catch (e) {
+        console.error('[App] Failed to refresh Discover after profile update:', e);
+      }
     } catch (error) {
       console.error('[App] Failed to update profile:', error);
       // Re-throw error so ProfilePage can show error message

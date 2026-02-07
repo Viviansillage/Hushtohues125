@@ -4,6 +4,7 @@
 
 const GUEST_ID_KEY = 'hushtohues_guest_id';
 const CHAT_SESSION_ID_KEY = 'hushtohues_chat_session_id';
+const GUEST_DISPLAY_NAME_KEY = 'hushtohues_guest_display_name';
 
 /**
  * 生成 UUID v4
@@ -147,6 +148,28 @@ export function getChatMessagesKey(): string {
   const guestId = getOrCreateGuestId();
   const sessionId = getOrCreateChatSessionId();
   return `hushtohues_chat_messages_${guestId}_${sessionId}`;
+}
+
+/**
+ * 获取 Guest 自定义昵称（localStorage 兜底，用于无帖子的 guest）
+ */
+export function getGuestDisplayName(): string | null {
+  try {
+    return localStorage.getItem(GUEST_DISPLAY_NAME_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 保存 Guest 自定义昵称到 localStorage（改名后持久化，供无帖子时使用）
+ */
+export function setGuestDisplayName(name: string): void {
+  try {
+    localStorage.setItem(GUEST_DISPLAY_NAME_KEY, name);
+  } catch {
+    // ignore
+  }
 }
 
 /**

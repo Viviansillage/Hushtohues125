@@ -337,6 +337,16 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
       
       // 只添加 AI 回复（最后一条消息）
       const aiMessage = response.messages[response.messages.length - 1];
+      // #region agent log (browser console - 前端调试：收到 API 回复后的内容)
+      if (aiMessage?.text) {
+        const t = aiMessage.text;
+        console.log('[ChatDebug] 收到 AI 回复', {
+          replyLength: t.length,
+          replyStartsWithJson: t.trim().startsWith('{'),
+          preview: t.substring(0, 120)
+        });
+      }
+      // #endregion
       if (aiMessage && aiMessage.sender === 'bot') {
         const mappedMessage = mapMessage(aiMessage);
         // ✅ 添加 provider 和 model 信息

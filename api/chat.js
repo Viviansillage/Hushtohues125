@@ -610,7 +610,7 @@ async function callGemini(messages, userText, customPrompt = null) {
     generationConfig: {
       temperature: 0.3,
       topP: 0.9,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 8192,
       responseMimeType: 'application/json'
     }
   };
@@ -634,8 +634,14 @@ async function callGemini(messages, userText, customPrompt = null) {
   }
 
   const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
+  const candidate = data.candidates?.[0];
+  const text = candidate?.content?.parts?.[0]?.text;
+  const finishReason = candidate?.finishReason;
+
+  // #region agent log (Vercel console - copy this line to debug)
+  console.log('[ChatDebug] callGemini result', JSON.stringify({ textLength: text?.length ?? 0, finishReason: finishReason ?? null, hasClosingBrace: text?.trim().endsWith('}') ?? false }));
+  // #endregion
+
   if (!text) {
     console.error('[callGemini] No text in response:', JSON.stringify(data).substring(0, 500));
     throw new Error('Gemini returned no text');
@@ -643,12 +649,6 @@ async function callGemini(messages, userText, customPrompt = null) {
 
   console.log('[callGemini] Success, response length:', text.length);
   
-  return text;
-  
-  if (!text) {
-    throw new Error('No text in Gemini response');
-  }
-
   return text;
 }
 
@@ -734,6 +734,11 @@ Title (phrase/topic only, no quotes):`;
  * 安全解析 Gemini JSON
  */
 function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
+  // #region agent log (Vercel console - copy this line to debug)
+  const _firstBrace = text.trim().indexOf('{');
+  const _lastBrace = text.trim().lastIndexOf('}');
+  console.log('[ChatDebug] safeParseGeminiJson entry', JSON.stringify({ textLength: text?.length ?? 0, firstBrace: _firstBrace, lastBrace: _lastBrace, hasValidBraces: _firstBrace !== -1 && _lastBrace !== -1 }));
+  // #endregion
   try {
     let cleaned = text.trim();
     if (cleaned.startsWith('```json')) {
@@ -767,9 +772,14 @@ function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
 
     return parsed;
   } catch (error) {
+    // #region agent log (Vercel console - copy this line to debug)
+    console.log('[ChatDebug] safeParseGeminiJson PARSE FAILED (fallback used)', JSON.stringify({ errorMessage: error?.message ?? '', textLength: text?.length ?? 0 }));
+    // #endregion
     console.error('Failed to parse Gemini JSON:', error);
+    const fallbackReply =
+      'Sorry, the response was cut off or invalid. Please try a shorter question or try again. 回复被截断或格式异常，请缩短问题后重试。';
     return {
-      reply: text.substring(0, 200),
+      reply: fallbackReply,
       title: fallbackTitle,
       summary: 'Unable to parse response.',
       tags: ['error'],
@@ -1079,6 +1089,10 @@ export default async function handler(req, res) {
         const messagesWithUser = [...messages, userMessage];
         const geminiResponse = await callGemini(messagesWithUser, text);
         const structured = safeParseGeminiJson(geminiResponse);
+
+        // #region agent log (Vercel console - copy this line to debug)
+        console.log('[ChatDebug] POST message after parse', JSON.stringify({ geminiResponseLength: geminiResponse?.length ?? 0, replyLength: structured?.reply?.length ?? 0, replyStartsWithJson: structured?.reply?.trim().startsWith('{') ?? false }));
+        // #endregion
 
         console.log(`[${requestId}] [POST message] Gemini responded, saving bot message...`);
         

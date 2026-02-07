@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { toast, Toaster } from 'sonner@2.0.3';
 import { ApiProfile } from '../lib/api';
+import { setGuestDisplayName } from '../lib/guest';
 
 interface HeatmapDay {
   date: Date;
@@ -90,6 +91,7 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
       setNameError('');
       const newHandle = '@' + trimmed.toLowerCase().replace(/\s+/g, '');
       await onUpdateProfile({ userName: trimmed, userHandle: newHandle });
+      setGuestDisplayName(trimmed);  // localStorage 兜底，供无帖子时使用
       setIsEditingName(false);
       toast.success('Profile updated!', { className: 'handwritten font-bold' });
     } catch (error) {

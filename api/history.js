@@ -257,9 +257,11 @@ async function handleHistoryById(req, res, id) {
             ? data.preview_images[0]
             : null;
           
-          // ✅ 获取 author_name
+          // ✅ 获取 author_name（优先使用前端传入的 authorDisplayName，供无帖子的 guest 首次发布使用）
           let authorName = publishActor.name || `Guest-${publishActor.id.slice(-6)}`;
-          if (publishActor.type === 'user') {
+          if (body.authorDisplayName && typeof body.authorDisplayName === 'string' && body.authorDisplayName.trim()) {
+            authorName = body.authorDisplayName.trim();
+          } else if (publishActor.type === 'user') {
             try {
               const { data: profile } = await supabase
                 .from('profiles')

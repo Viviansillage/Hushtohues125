@@ -43,6 +43,8 @@ export type ApiHistoryItem = {
   isPublic: boolean;
   tags: string[];
   contentJson?: any;
+  /** 发布时传入的作者昵称，供无帖子的 guest 首次发布使用 */
+  authorDisplayName?: string;
 };
 
 export type ApiCommunityPost = {

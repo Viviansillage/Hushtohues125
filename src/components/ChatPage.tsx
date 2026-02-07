@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Network, Image as ImageIcon, Mic, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
@@ -115,6 +115,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
   const [isSavingAll, setIsSavingAll] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasLoadedRef = useRef(false);
   const lastSaveHashRef = useRef<string>('');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -637,12 +638,20 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     console.log('🆕 Started new chat with conversationId:', conversationId);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
+
+  // 输入框随内容自动增高
+  useLayoutEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+  }, [inputValue]);
 
   const simulateVoiceInput = () => {
     setIsListening(true);
@@ -1039,25 +1048,28 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
       {/* Input */}
       <div className="border-t-3 border-[#1a1a1a] bg-[#faf8f3] px-8 py-6 hand-drawn-border z-20">
-        <div className="flex gap-3">
-          <input
-            type="text"
+        <div className="flex gap-3 items-end">
+          <textarea
+            ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="Type your message..."
-            className="flex-1 px-5 py-3 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] focus:outline-none hand-drawn-border"
+            rows={1}
+            className="flex-1 px-5 py-3 border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] focus:outline-none hand-drawn-border resize-none overflow-y-auto min-h-[44px] max-h-[200px]"
           />
           <button
             onClick={handleNewChat}
-            className="px-4 flex items-center justify-center border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] transition-colors sketch-btn hand-drawn-border"
+            style={{ height: 44, minHeight: 44 }}
+            className="px-4 flex items-center justify-center border-[2.5px] border-[#1a1a1a] bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9] transition-colors sketch-btn hand-drawn-border shrink-0 box-border"
             title="Start a new chat"
           >
             <Plus className="w-5 h-5" />
           </button>
           <button
             onClick={handleVoiceInput}
-            className={`px-4 flex items-center justify-center border-[2.5px] border-[#1a1a1a] transition-colors sketch-btn hand-drawn-border ${
+            style={{ height: 44, minHeight: 44 }}
+            className={`px-4 flex items-center justify-center border-[2.5px] border-[#1a1a1a] transition-colors sketch-btn hand-drawn-border shrink-0 box-border ${
               isListening
                 ? 'bg-[#ff6b6b] text-white animate-pulse'
                 : 'bg-[#faf8f3] text-[#1a1a1a] hover:bg-[#e8e4d9]'
@@ -1069,7 +1081,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
           <button
             onClick={handleSend}
             disabled={!inputValue.trim() || isSending}
-            className="px-6 py-3 bg-[#1a1a1a] text-[#f5f1e8] border-[2.5px] border-[#1a1a1a] hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-all sketch-btn hand-drawn-border"
+            style={{ height: 44, minHeight: 44 }}
+            className="px-6 flex items-center justify-center bg-[#1a1a1a] text-[#f5f1e8] border-[2.5px] border-[#1a1a1a] hover:bg-[#2d2d2d] disabled:opacity-40 disabled:cursor-not-allowed transition-all sketch-btn hand-drawn-border shrink-0 box-border"
           >
             {isSending ? 'Sending...' : 'Send →'}
           </button>

@@ -117,7 +117,7 @@ Use clear, logically structured natural language in the "reply" field.
 
 Required JSON schema:
 {
-  "reply": "<clear, logically structured natural language response in PLAIN TEXT without markdown>",
+  "reply": "<clear, logically structured natural language response in PLAIN TEXT without markdown, natural conversational text, NOT JSON or code blocks>",
   "title": "<concise topic title, max 10 words>",
   "summary": "<2–3 sentences summarizing the user's clarified thinking>",
   "tags": ["<relevant tag>", "<relevant tag>", "<relevant tag>"],

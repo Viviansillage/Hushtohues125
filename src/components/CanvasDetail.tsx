@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { Resizable } from 're-resizable';
 import { toast, Toaster } from 'sonner';
 import mermaid from 'mermaid';
@@ -175,6 +175,183 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
   return <div ref={mermaidRef} className="mermaid-container"></div>;
 };
 
+const DraggableCanvasItemCard = ({
+  item,
+  isPreview,
+  readOnly,
+  containerRef,
+  scrollBeforePointerRef,
+  scrollRestoreRef,
+  bringToFront,
+  handleResizeStop,
+  setItems,
+  items,
+}: {
+  item: DraggableItem;
+  isPreview: boolean;
+  readOnly: boolean;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  scrollBeforePointerRef: React.RefObject<number>;
+  scrollRestoreRef: React.RefObject<number | null>;
+  bringToFront: (id: string) => void;
+  handleResizeStop: (id: string, ref: HTMLElement, d: any) => void;
+  setItems: React.Dispatch<React.SetStateAction<DraggableItem[]>>;
+  items: DraggableItem[];
+}) => {
+  const dragControls = useDragControls();
+  const handleContentPointerDown = (e: React.PointerEvent) => {
+    if (isPreview || readOnly) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('.react-resizable-handle') || target.closest('textarea')) return;
+    dragControls.start(e);
+  };
+
+  return (
+    <motion.div
+      drag={!isPreview && !readOnly}
+      dragListener={false}
+      dragControls={dragControls}
+      dragMomentum={false}
+      dragElastic={0}
+      onDragStart={() => {
+        if (isPreview || readOnly) return;
+        scrollRestoreRef.current = scrollBeforePointerRef.current;
+        bringToFront(item.id);
+        const saved = scrollRestoreRef.current;
+        const restore = () => {
+          const c = containerRef.current;
+          if (c && saved !== null && Math.abs(c.scrollTop - saved) > 50) {
+            c.scrollTop = saved;
+          }
+        };
+        restore();
+        requestAnimationFrame(restore);
+      }}
+      onDragEnd={(e, info) => {
+        const savedScroll = scrollRestoreRef.current;
+        scrollRestoreRef.current = null;
+        if (isPreview || readOnly) return;
+        setItems(prev => prev.map(i =>
+          i.id === item.id
+            ? { ...i, x: i.x + info.offset.x, y: i.y + info.offset.y }
+            : i
+        ));
+        if (savedScroll !== null) {
+          const restore = () => {
+            const c = containerRef.current;
+            if (c && Math.abs(c.scrollTop - savedScroll) > 50) {
+              c.scrollTop = savedScroll;
+            }
+          };
+          restore();
+          requestAnimationFrame(restore);
+          requestAnimationFrame(() => requestAnimationFrame(restore));
+        }
+      }}
+      style={{
+        position: 'absolute',
+        x: item.x,
+        y: item.y,
+        zIndex: item.zIndex,
+      }}
+      className="group"
+    >
+      <Resizable
+        size={{
+          width: item.width,
+          height: item.type === 'text' ? 'auto' : item.height,
+        }}
+        lockAspectRatio={item.type === 'image'}
+        onResizeStart={() => {
+          if (containerRef.current) {
+            scrollRestoreRef.current = containerRef.current.scrollTop;
+          }
+        }}
+        onResizeStop={(e, direction, ref, d) => {
+          handleResizeStop(item.id, ref, d);
+          const savedScroll = scrollRestoreRef.current;
+          scrollRestoreRef.current = null;
+          if (savedScroll !== null) {
+            const restore = () => {
+              const c = containerRef.current;
+              if (c && Math.abs(c.scrollTop - savedScroll) > 50) {
+                c.scrollTop = savedScroll;
+              }
+            };
+            restore();
+            requestAnimationFrame(restore);
+            requestAnimationFrame(() => requestAnimationFrame(restore));
+          }
+        }}
+        enable={
+          !isPreview && !readOnly
+            ? item.type === 'text'
+              ? { right: true, left: true }
+              : { bottomRight: true }
+            : false
+        }
+        handleStyles={{
+          right: { cursor: 'ew-resize' },
+          bottomRight: { cursor: 'nwse-resize' },
+        }}
+        handleClasses={{
+          ...(item.type === 'text' && { right: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a]/20 w-2 h-full absolute right-0 top-0 transition-opacity rounded-full` }),
+          ...(item.type !== 'text' && { bottomRight: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a] w-4 h-4 rounded-full absolute right-0 bottom-0 translate-x-1/2 translate-y-1/2 z-10 transition-opacity border-2 border-[#f0ece1]` }),
+        }}
+      >
+        <div
+          onPointerDown={handleContentPointerDown}
+          className={item.type !== 'text' ? 'cursor-move w-full h-full' : ''}
+          style={item.type !== 'text' ? { touchAction: 'none' } : {}}
+        >
+          {item.type === 'image' ? (
+            <div className={`relative p-1 bg-white shadow-lg h-full ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
+              <div
+                className="absolute inset-0 border-[3px] border-[#1a1a1a] pointer-events-none"
+                style={{ borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px', filter: 'url(#hand-drawn-border)' }}
+              />
+              <div className="w-full h-full p-2 overflow-hidden" style={{ borderRadius: '2px' }}>
+                <img src={item.content} alt="Content" className="w-full h-full object-cover pointer-events-none grayscale-[0.2] contrast-[1.1]" draggable={false} />
+              </div>
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-32 h-10 bg-[#fdfbf7] opacity-90 rotate-2 shadow-sm border border-[#1a1a1a]/10" style={{ clipPath: 'polygon(5% 0%, 95% 0%, 100% 5%, 100% 95%, 95% 100%, 5% 100%, 0% 95%, 0% 5%)', maskImage: 'linear-gradient(45deg, transparent 5px, black 5px)' }} />
+            </div>
+          ) : item.type === 'mindmap' ? (
+            <div className={`relative p-4 bg-white shadow-lg h-full ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
+              <div className="absolute inset-0 border-[3px] border-[#1a1a1a] pointer-events-none" style={{ borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px', filter: 'url(#hand-drawn-border)' }} />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-lg">🧠</span>
+                  <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">{item.meta?.title || 'Mindmap'}</h3>
+                </div>
+                <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
+                  <MermaidMindmap mermaidCode={item.content || 'mindmap\n  root((Empty))'} id={item.id} />
+                </div>
+                {item.meta?.summary && <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>}
+              </div>
+            </div>
+          ) : (
+            <div className="relative group/text pt-2 pb-2" data-item-id={item.id}>
+              {!isPreview && !readOnly && (
+                <div className="absolute -top-6 left-0 px-2 py-1 bg-[#1a1a1a] text-[#f0ece1] text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-move pointer-events-none handwritten font-bold tracking-widest uppercase">Drag</div>
+              )}
+              <AutoResizingTextarea
+                item={item}
+                readOnly={isPreview || readOnly}
+                onChange={(val) => {
+                  const newItems = [...items];
+                  const idx = newItems.findIndex(i => i.id === item.id);
+                  newItems[idx].content = val;
+                  setItems(newItems);
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </Resizable>
+    </motion.div>
+  );
+};
+
 export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailProps) => {
   const [title, setTitle] = useState(item.title);
   // Default isPreview to readOnly (true in community view, false in archive edit)
@@ -185,6 +362,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const savedStateRef = useRef<string>(''); // 用于比较是否有修改
+  const scrollRestoreRef = useRef<number | null>(null); // 拖拽时恢复滚动位置（Motion 拖拽会重置 scroll）
+  const scrollBeforePointerRef = useRef<number>(0); // 在 pointerDown 阶段保存，早于 Motion 处理
   
   // Social State
   const [likes, setLikes] = useState(item.stats?.likes || 0);
@@ -239,6 +418,10 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   const bringToFront = (id: string) => {
     if (readOnly && isPreview) return;
+    // #region agent log
+    const scrollBefore = containerRef.current?.scrollTop ?? -1;
+    fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CanvasDetail.tsx:bringToFront',message:'A: bringToFront called',data:{id,scrollTop:scrollBefore},hypothesisId:'A',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     setItems(prev => {
       const maxZ = Math.max(...prev.map(i => i.zIndex), 0);
       return prev.map(item => item.id === id ? { ...item, zIndex: maxZ + 1 } : item);
@@ -736,8 +919,20 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         ref={containerRef}
         id="canvas-area"
         className={`flex-1 relative overflow-y-auto overflow-x-hidden ${isPreview || readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
-        style={{ height: 'calc(100vh - 80px)' }}
+        style={{ height: 'calc(100vh - 80px)', overflowAnchor: 'none' }}
         onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
+        onPointerDownCapture={(e) => {
+          const el = containerRef.current;
+          if (el && !isPreview && !readOnly) {
+            scrollBeforePointerRef.current = el.scrollTop;
+          }
+          // #region agent log
+          if (el) {
+            const st = el.scrollTop;
+            fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CanvasDetail.tsx:pointerDownCapture',message:'C: scroll at pointerDown (before motion)',data:{scrollTop:st,targetTag:(e.target as HTMLElement)?.tagName},hypothesisId:'C',timestamp:Date.now()})}).catch(()=>{});
+          }
+          // #endregion
+        }}
       >
         {/* 内层容器：提供足够高度触发滚动 */}
         <div id="canvas-inner-area" className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
@@ -762,131 +957,20 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
              />
         </motion.div>
 
-        {items.map((item) => (
-          <motion.div
-            key={item.id}
-            drag={!isPreview && !readOnly}
-            dragMomentum={false}
-            dragElastic={0}
-            onDragStart={() => !isPreview && !readOnly && bringToFront(item.id)}
-            onDragEnd={(e, info) => {
-              if (isPreview || readOnly) return;
-              setItems(prev => prev.map(i => 
-                i.id === item.id 
-                  ? { ...i, x: i.x + info.offset.x, y: i.y + info.offset.y }
-                  : i
-              ));
-            }}
-            style={{ 
-                position: 'absolute', 
-                zIndex: item.zIndex,
-                x: item.x,
-                y: item.y
-            }}
-            className="group"
-          >
-            <Resizable
-               size={{ 
-                   width: item.width, 
-                   height: item.type === 'text' ? 'auto' : item.height // Text height is auto-controlled by content
-               }}
-               onResizeStop={(e, direction, ref, d) => handleResizeStop(item.id, ref, d)}
-               enable={
-                 (!isPreview && !readOnly) ? (
-                   item.type === 'text' 
-                     ? { right: true, left: true } // Text only resizes width
-                     : { top: true, right: true, bottom: true, left: true, topRight: true, bottomRight: true, bottomLeft: true, topLeft: true }
-                 ) : false
-               }
-               handleStyles={{
-                  right: { cursor: 'ew-resize' },
-                  bottomRight: { cursor: 'nwse-resize' }
-               }}
-               handleClasses={{
-                  right: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a]/20 w-2 h-full absolute right-0 top-0 transition-opacity rounded-full`,
-                  bottomRight: `opacity-0 ${!isPreview && !readOnly ? 'group-hover:opacity-100' : ''} bg-[#1a1a1a] w-4 h-4 rounded-full absolute -right-2 -bottom-2 z-10 transition-opacity border-2 border-[#f0ece1]`
-               }}
-            >
-                {item.type === 'image' ? (
-                  <div className={`relative p-1 bg-white shadow-lg rotate-1 ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
-                    {/* Sketchy Border Container */}
-                    <div 
-                        className="absolute inset-0 border-[3px] border-[#1a1a1a] pointer-events-none"
-                        style={{
-                            borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px',
-                            filter: 'url(#hand-drawn-border)'
-                        }}
-                    ></div>
-                    
-                    {/* Image Content */}
-                    <div className="w-full h-full p-2 overflow-hidden" style={{ borderRadius: '2px' }}>
-                        <img 
-                            src={item.content} 
-                            alt="Content" 
-                            className="w-full h-full object-cover pointer-events-none grayscale-[0.2] contrast-[1.1]" 
-                            draggable={false}
-                        />
-                    </div>
-
-                    {/* Tape effect */}
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-32 h-10 bg-[#fdfbf7] opacity-90 rotate-2 shadow-sm border border-[#1a1a1a]/10"
-                         style={{
-                            clipPath: 'polygon(5% 0%, 95% 0%, 100% 5%, 100% 95%, 95% 100%, 5% 100%, 0% 95%, 0% 5%)',
-                            maskImage: 'linear-gradient(45deg, transparent 5px, black 5px)'
-                         }}
-                    ></div>
-                  </div>
-                ) : item.type === 'mindmap' ? (
-                  <div className={`relative p-4 bg-white shadow-lg ${!isPreview && !readOnly ? 'group-hover:shadow-xl' : ''} transition-shadow select-none`}>
-                    <div 
-                      className="absolute inset-0 border-[3px] border-[#1a1a1a] pointer-events-none"
-                      style={{
-                        borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px',
-                        filter: 'url(#hand-drawn-border)'
-                      }}
-                    ></div>
-                    <div className="relative z-10">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">🧠</span>
-                        <h3 className="font-bold text-lg text-[#1a1a1a] handwritten">
-                          {item.meta?.title || 'Mindmap'}
-                        </h3>
-                      </div>
-                      <div className="bg-white rounded-lg p-3 min-h-[200px] overflow-x-auto">
-                        <MermaidMindmap
-                          mermaidCode={item.content || 'mindmap\n  root((Empty))'}
-                          id={item.id}
-                        />
-                      </div>
-                      {item.meta?.summary && (
-                        <p className="mt-2 text-xs text-[#6d6d6d] italic">{item.meta.summary}</p>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative group/text pt-2 pb-2" data-item-id={item.id}>
-                     {/* Drag Handle for Text (visible on hover) */}
-                     {!isPreview && !readOnly && (
-                       <div className="absolute -top-6 left-0 px-2 py-1 bg-[#1a1a1a] text-[#f0ece1] text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-move pointer-events-none handwritten font-bold tracking-widest uppercase">
-                          Drag
-                       </div>
-                     )}
-                     
-                     {/* AutoResizingTextarea passed readOnly prop */}
-                     <AutoResizingTextarea 
-                       item={item} 
-                       readOnly={isPreview || readOnly}
-                       onChange={(val) => {
-                         const newItems = [...items];
-                         const idx = newItems.findIndex(i => i.id === item.id);
-                         newItems[idx].content = val;
-                         setItems(newItems);
-                       }} 
-                     />
-                  </div>
-                )}
-            </Resizable>
-          </motion.div>
+        {items.map((canvasItem) => (
+          <DraggableCanvasItemCard
+            key={canvasItem.id}
+            item={canvasItem}
+            isPreview={isPreview}
+            readOnly={readOnly}
+            containerRef={containerRef}
+            scrollBeforePointerRef={scrollBeforePointerRef}
+            scrollRestoreRef={scrollRestoreRef}
+            bringToFront={bringToFront}
+            handleResizeStop={handleResizeStop}
+            setItems={setItems}
+            items={items}
+          />
         ))}
         
         {!isPreview && !readOnly && (

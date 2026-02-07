@@ -731,6 +731,44 @@ Title (phrase/topic only, no quotes):`;
 }
 
 /**
+ * 清理 mindmap 中 (( )) 内的嵌套括号，避免 Mermaid 解析错误
+ */
+function cleanMermaidParentheses(code) {
+  if (!code || typeof code !== 'string') return code;
+  return code.replace(/\(\(([\s\S]*?)\)\)/g, (_, inner) => {
+    const safe = inner.replace(/\(/g, '（').replace(/\)/g, '）');
+    return `((${safe}))`;
+  });
+}
+
+/**
+ * 验证并预处理 mermaidCode：若为自然语言或无效格式则返回安全 fallback mindmap
+ */
+function validateAndSanitizeMermaidCode(mermaidCode, title = 'Diagram') {
+  if (!mermaidCode || typeof mermaidCode !== 'string') {
+    return `mindmap\n  root((${title}))\n    empty((No valid diagram))`;
+  }
+  const trimmed = mermaidCode.trim();
+  const validStarts = ['mindmap', 'flowchart', 'graph'];
+  const isValid = validStarts.some(s => trimmed.toLowerCase().startsWith(s));
+  if (!isValid) {
+    return `mindmap\n  root((${title}))\n    summary((Diagram could not be generated))`;
+  }
+  // 常见 AI 拒绝/自然语言片段：若首行类似 "Hello" / "I cannot" 等，视为无效
+  const firstLine = trimmed.split('\n')[0]?.toLowerCase() || '';
+  const refusalPatterns = /^(hello|hi|i cannot|i am unable|i'm unable|sorry|unfortunately|p\.?s\.?)/;
+  if (refusalPatterns.test(firstLine.replace(/^["']|["']$/g, '').trim())) {
+    return `mindmap\n  root((${title}))\n    summary((Diagram could not be generated))`;
+  }
+  // mindmap 类型：清理 (( )) 内括号
+  if (trimmed.toLowerCase().startsWith('mindmap')) {
+    return cleanMermaidParentheses(trimmed);
+  }
+  // flowchart/graph：替换节点标签中可能导致 parse 错误的序列（如 P.S.）
+  return trimmed.replace(/P\.\s*S\./gi, 'PS');
+}
+
+/**
  * 安全解析 Gemini JSON
  */
 function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
@@ -1180,6 +1218,10 @@ export default async function handler(req, res) {
           
           const geminiResponse = await callGemini(messages, conversationText, MINDMAP_PROMPT);
           const mindmapData = safeParseGeminiJson(geminiResponse, 'Mindmap');
+          const sanitizedMermaidCode = validateAndSanitizeMermaidCode(
+            mindmapData.mermaidCode,
+            mindmapData.title || 'Mindmap'
+          );
           
           model = 'gemini-2.0-flash-exp';
 
@@ -1193,8 +1235,8 @@ export default async function handler(req, res) {
             metadata: {
               title: mindmapData.title,
               summary: mindmapData.summary,
-              mermaidCode: mindmapData.mermaidCode,
-              structuredMindmap: mindmapData
+              mermaidCode: sanitizedMermaidCode,
+              structuredMindmap: { ...mindmapData, mermaidCode: sanitizedMermaidCode }
             }
           });
           
@@ -1205,9 +1247,9 @@ export default async function handler(req, res) {
             createdAt: new Date().toISOString(),
             summary: mindmapData.summary,
             payload: {
-              mermaidCode: mindmapData.mermaidCode,
+              mermaidCode: sanitizedMermaidCode,
               title: mindmapData.title,
-              structuredMindmap: mindmapData
+              structuredMindmap: { ...mindmapData, mermaidCode: sanitizedMermaidCode }
             },
             provider,
             model

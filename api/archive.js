@@ -65,7 +65,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && (action === 'save' || req.url.includes('/save'))) {
     try {
       const body = await parseBody(req);
-      const { sessionId, artifact } = body;
+      const { sessionId, artifact, measuredHeight } = body;
 
       if (!sessionId || !artifact) {
         return res.status(400).json({
@@ -171,8 +171,8 @@ export default async function handler(req, res) {
           }
         });
         
-        // 新元素放在最下面 + 120px
-        const newY = maxBottom + 120;
+        // 新元素放在最下面 + 60px 间距（不重叠前提下尽量紧凑）
+        const newY = maxBottom + 60;
         
         // 确定新元素的 ID
         let newId;
@@ -215,6 +215,9 @@ export default async function handler(req, res) {
         const textContent = artifact.data?.summary || lastMessage || '';
         if (textContent.trim()) {
           const textCount = currentItems.filter(i => i.type === 'text').length;
+          const textHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
+            ? measuredHeight
+            : estimateTextHeight(textContent);
           newItems.push({
             id: `txt-${textCount}`,
             type: 'text',
@@ -222,7 +225,7 @@ export default async function handler(req, res) {
             x: 520,  // 右侧位置
             y: newY,
             width: 400,
-            height: 'auto',
+            height: textHeight,
             zIndex: currentItems.length + 2
           });
         }
@@ -338,6 +341,9 @@ export default async function handler(req, res) {
         // 创建对应的 text item（右侧：summary/lastMessage）
         const textContent = artifact.data?.summary || lastMessage || '';
         if (textContent.trim()) {
+          const textHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
+            ? measuredHeight
+            : estimateTextHeight(textContent);
           initialItems.push({
             id: 'txt-0',
             type: 'text',
@@ -345,7 +351,7 @@ export default async function handler(req, res) {
             x: 520,  // 右侧位置
             y: currentY,
             width: 400,
-            height: 'auto',
+            height: textHeight,
             zIndex: 2
           });
         }
@@ -426,7 +432,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && action === 'saveMessage') {
     try {
       const body = await parseBody(req);
-      const { sessionId, messageId, messageText, artifact } = body;
+      const { sessionId, messageId, messageText, artifact, measuredHeight } = body;
 
       if (!sessionId || !messageId || !messageText) {
         return res.status(400).json({
@@ -504,7 +510,7 @@ export default async function handler(req, res) {
         }
       });
 
-      const newY = maxBottom + 120;
+      const newY = maxBottom + 60;
       const newItems = [];
 
       if (artifact) {
@@ -543,7 +549,9 @@ export default async function handler(req, res) {
         const summaryText = artifact.data?.summary || messageText;
         if (summaryText.trim()) {
           const textCount = currentItems.filter(i => i.type === 'text').length;
-          const estimatedHeight = estimateTextHeight(summaryText);
+          const textHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
+            ? measuredHeight
+            : estimateTextHeight(summaryText);
           newItems.push({
             id: `txt-${textCount}`,
             type: 'text',
@@ -551,14 +559,16 @@ export default async function handler(req, res) {
             x: 520,
             y: newY,
             width: 400,
-            height: estimatedHeight,
+            height: textHeight,
             zIndex: currentItems.length + newItems.length + 1
           });
         }
       } else {
         // 无artifact：只保存消息文本（更宽）
         const textCount = currentItems.filter(i => i.type === 'text').length;
-        const estimatedHeight = estimateTextHeight(messageText);
+        const textHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
+          ? measuredHeight
+          : estimateTextHeight(messageText);
         newItems.push({
           id: `txt-msg-${textCount}`,
           type: 'text',
@@ -566,7 +576,7 @@ export default async function handler(req, res) {
           x: 60,
           y: newY,
           width: 600,  // ← 更宽
-          height: estimatedHeight,
+          height: textHeight,
           zIndex: currentItems.length + 1
         });
       }

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast, Toaster } from 'sonner';
 import { createChatArtifact, getChatMessages, sendChatMessage, saveToArchive } from '../lib/api';
 import { getOrCreateChatSessionId, getChatMessagesKey, getOrCreateGuestId, resetChatSession, sanitizeMessagesForLocalStorage } from '../lib/guest';
+import { measureCanvasTextHeight } from '../lib/measureTextHeight';
 import mermaid from 'mermaid';
 import { useChatStore } from '../lib/chatStore';
 
@@ -371,16 +372,24 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     if (message.saved || (message.artifact && message.artifact.saved)) return;
     
     try {
+      // 在保存前测量文本实际高度，避免 append 时重叠
+      const textToMeasure = message.artifact?.data?.summary ?? message.text;
+      const textWidth = message.artifact ? 400 : 600;
+      const measuredHeight = typeof textToMeasure === 'string' && textToMeasure.trim()
+        ? measureCanvasTextHeight(textToMeasure, textWidth)
+        : undefined;
+
       console.log('[Save Message] Sending request:', {
         messageId: message.id,
         hasArtifact: !!message.artifact,
         artifactType: message.artifact?.type,
-        sessionId: conversationId
+        sessionId: conversationId,
+        measuredHeight: measuredHeight ?? '(fallback to estimate)'
       });
-      
+
       const response = await fetch('/api/archive?action=saveMessage', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || ''
         },
@@ -388,7 +397,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
           sessionId: conversationId,
           messageId: message.id,
           messageText: message.text,
-          artifact: message.artifact  // 有artifact就传，没有就是undefined
+          artifact: message.artifact,
+          measuredHeight  // 客户端测量的文本高度，优先于服务端估算
         })
       });
       
@@ -544,6 +554,11 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     const savedMessageIds: string[] = [];
 
     const saveArtifact = async (artifact: { type: string; data: any }, messageId?: string) => {
+      const summaryText = artifact.data?.summary ?? '';
+      const measuredHeight = typeof summaryText === 'string' && summaryText.trim()
+        ? measureCanvasTextHeight(summaryText, 400)
+        : undefined;
+
       const response = await fetch('/api/archive?action=save', {
         method: 'POST',
         headers: {
@@ -552,7 +567,8 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         },
         body: JSON.stringify({
           sessionId: conversationId,
-          artifact
+          artifact,
+          measuredHeight
         })
       });
 

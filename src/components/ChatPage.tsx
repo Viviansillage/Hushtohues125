@@ -41,6 +41,25 @@ const mapMessage = (message: { id: string; text: string; sender: 'user' | 'bot';
   timestamp: new Date(message.timestamp)
 });
 
+/** 从图片 URL 获取尺寸，供 canvas 按宽高比计算高度 */
+const getImageDimensions = (url: string): Promise<{ width: number; height: number } | null> =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+
+/** 为 image artifact 补充 imageWidth/imageHeight，用于 canvas 按比例显示 */
+const enrichArtifactWithImageDimensions = async (artifact: { type: string; data?: any }): Promise<{ type: string; data: any }> => {
+  if (artifact?.type !== 'image' || !artifact.data) return artifact;
+  const url = artifact.data.imageUrl || artifact.data.url;
+  if (!url) return artifact;
+  const dims = await getImageDimensions(url);
+  if (!dims) return artifact;
+  return { ...artifact, data: { ...artifact.data, imageWidth: dims.width, imageHeight: dims.height } };
+};
+
 /**
  * 创建最小化上下文用于 artifact 生成
  * - 只发送最后 N 条消息
@@ -379,10 +398,16 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         ? measureCanvasTextHeight(textToMeasure, textWidth)
         : undefined;
 
+      // 若为图片，补充 imageWidth/imageHeight 供服务端按宽高比计算高度
+      let artifactToSend = message.artifact;
+      if (message.artifact?.type === 'image' && (message.artifact.data?.imageUrl || message.artifact.data?.url)) {
+        artifactToSend = await enrichArtifactWithImageDimensions(message.artifact);
+      }
+
       console.log('[Save Message] Sending request:', {
         messageId: message.id,
-        hasArtifact: !!message.artifact,
-        artifactType: message.artifact?.type,
+        hasArtifact: !!artifactToSend,
+        artifactType: artifactToSend?.type,
         sessionId: conversationId,
         measuredHeight: measuredHeight ?? '(fallback to estimate)'
       });
@@ -397,7 +422,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
           sessionId: conversationId,
           messageId: message.id,
           messageText: message.text,
-          artifact: message.artifact,
+          artifact: artifactToSend,
           measuredHeight  // 客户端测量的文本高度，优先于服务端估算
         })
       });
@@ -554,7 +579,12 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     const savedMessageIds: string[] = [];
 
     const saveArtifact = async (artifact: { type: string; data: any }, messageId?: string) => {
-      const summaryText = artifact.data?.summary ?? '';
+      // 若为图片，补充 imageWidth/imageHeight 供服务端按宽高比计算高度
+      const enriched = artifact.type === 'image' && (artifact.data?.imageUrl || artifact.data?.url)
+        ? await enrichArtifactWithImageDimensions(artifact)
+        : artifact;
+
+      const summaryText = enriched.data?.summary ?? '';
       const measuredHeight = typeof summaryText === 'string' && summaryText.trim()
         ? measureCanvasTextHeight(summaryText, 400)
         : undefined;
@@ -567,7 +597,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         },
         body: JSON.stringify({
           sessionId: conversationId,
-          artifact,
+          artifact: enriched,
           measuredHeight
         })
       });

@@ -35,6 +35,8 @@ export interface CommunityTag {
     postsToday: number;
   };
   trending: string[];
+  /** 分区创建时间 (ISO string)，用于展示 "Created MMM YYYY" */
+  createdAt?: string | null;
 }
 
 interface CommunityPageProps {
@@ -50,6 +52,7 @@ interface CommunityPageProps {
   onToggleBookmark: (id: string) => void;
   onFollowCommunity: (community: CommunityTag) => void;
   onUnfollowCommunity: (name: string) => void;
+  onEnterCommunity?: (community: CommunityTag) => void;
 }
 
 // --- Components ---
@@ -66,7 +69,8 @@ export function CommunityPage({
   onToggleLike,
   onToggleBookmark,
   onFollowCommunity,
-  onUnfollowCommunity
+  onUnfollowCommunity,
+  onEnterCommunity
 }: CommunityPageProps) {
   const [internalTab, setInternalTab] = useState<'following' | 'discover'>('following');
   const activeTab = controlledTab ?? internalTab;
@@ -298,9 +302,11 @@ export function CommunityPage({
                 {followedCommunities.map((community) => (
                   <div 
                     key={community.name}
-                    className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hand-drawn-border wireframe-shadow group relative hover:-translate-y-1 transition-transform"
-                    // TODO: 改为筛选 Discover 列表
-                    // onClick={() => onNavigateToCommunity && onNavigateToCommunity(community.name)}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onEnterCommunity?.(community)}
+                    onKeyDown={(e) => e.key === 'Enter' && onEnterCommunity?.(community)}
+                    className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hand-drawn-border wireframe-shadow group relative hover:-translate-y-1 transition-transform cursor-pointer"
                   >
                     {/* Community Header */}
                     <div className="flex items-start justify-between mb-6">
@@ -313,8 +319,7 @@ export function CommunityPage({
                             {community.name}
                           </h2>
                           <div className="flex items-center gap-2 mt-1">
-                             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                             <span className="text-sm text-[#6d6d6d] handwritten font-bold">{community.stats.online} online</span>
+                             <span className="text-sm text-[#6d6d6d] handwritten font-bold">{community.stats.members.toLocaleString()} members</span>
                           </div>
                         </div>
                       </div>
@@ -366,7 +371,11 @@ export function CommunityPage({
 
                     {/* Action Footer */}
                     <div className="mt-6 pt-4 border-t border-dashed border-[#1a1a1a]/20 flex justify-center">
-                       <button className="text-sm font-bold handwritten hover:scale-110 transition-transform flex items-center gap-2">
+                       <button
+                         type="button"
+                         onClick={(e) => { e.stopPropagation(); onEnterCommunity?.(community); }}
+                         className="text-sm font-bold handwritten hover:scale-110 transition-transform flex items-center gap-2"
+                       >
                           <span>Enter Community</span>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                              <path d="M5 12h14M12 5l7 7-7 7"/>

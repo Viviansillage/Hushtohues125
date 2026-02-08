@@ -60,6 +60,8 @@ export type ApiCommunityPost = {
   comments: number;
   timestamp: string;
   tags: string[];
+  /** 分区名称（7 个固定分区之一），用于验证与筛选 */
+  communityName?: string | null;
 };
 
 export type ApiCommunityTag = {
@@ -71,6 +73,8 @@ export type ApiCommunityTag = {
     postsToday: number;
   };
   trending: string[];
+  /** 分区在数据库中的创建时间 (ISO string)，用于展示 "Created MMM YYYY" */
+  createdAt?: string | null;
 };
 
 export type ApiUserState = {
@@ -403,12 +407,15 @@ export const unlikePost = (postId: string) =>
   );
 
 /**
- * 获取 Discover Feed（seed 优先）
- * ✅ 错误处理：即使后端返回 {posts: [], error: ...}，也不 throw
+ * 获取 Discover Feed（可选按分区筛选）
+ * @param community - 分区名称（如 Entertainment）时只返回该分区的帖子
  */
-export const getDiscoverFeed = async (): Promise<ApiCommunityPost[]> => {
+export const getDiscoverFeed = async (community?: string): Promise<ApiCommunityPost[]> => {
   try {
-    const result = await request<ApiCommunityPost[] | { posts: ApiCommunityPost[], error?: string }>('/api/community?discover=true');
+    const url = community?.trim()
+      ? `/api/community?discover=true&community=${encodeURIComponent(community.trim())}`
+      : '/api/community?discover=true';
+    const result = await request<ApiCommunityPost[] | { posts: ApiCommunityPost[], error?: string }>(url);
     
     // ✅ 处理后端返回的错误格式 {posts: [], error: ...}
     if (result && typeof result === 'object' && 'posts' in result) {

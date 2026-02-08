@@ -135,13 +135,14 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
       days.push({ date: new Date(), count: 0, isPadding: true });
     }
 
-    // Add actual days
+    // Fixed activity counts for demo (hackathon - no real data yet)
+    const fixedCounts = [0, 1, 2, 1, 3, 2, 0, 1, 2, 3, 2, 4, 1, 0, 2, 3, 2, 1, 3, 2, 1, 0, 2, 1, 3, 2, 1, 0, 2, 3];
     for (let i = 0; i < 30; i++) {
       const d = new Date(startDate);
       d.setDate(startDate.getDate() + i);
       days.push({
         date: d,
-        count: Math.floor(Math.random() * 5),
+        count: fixedCounts[i],
         isPadding: false
       });
     }

@@ -66,10 +66,9 @@
       },
       "scripts": {
             "dev": "vite",
-            "dev:server": "node server/index-supabase.js",
-            "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
             "build": "vite build",
             "preview": "vite preview",
-            "vercel-build": "vite build"
+            "vercel-build": "vite build",
+            "cleanup-storage": "node supabase/cleanup-storage-before-today.js"
       }
 }

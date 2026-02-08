@@ -104,6 +104,13 @@ Internal reasoning steps (do NOT output these steps):
 Final output MUST be valid JSON ONLY, using the schema below.
 Use clear, logically structured natural language in the "reply" field.
 
+**CRITICAL JSON Syntax Rules (must follow exactly):**
+- Escape double quotes inside string values: use \\" for literal quotes (e.g. He said \\"yes\\")
+- Separate every property with a comma (no missing commas between key-value pairs)
+- No trailing commas: do not put a comma after the last property in an object or array
+- Use \\n for line breaks within string values; do not use raw newlines inside JSON strings
+- Ensure every { has a matching }, every [ has a matching ], every " has a matching "
+
 **Response Format Guidelines:**
 - The "reply" field MUST be plain text WITHOUT any markdown formatting (no **, __, *, #, etc.)
 - Use natural paragraph breaks and clear language structure instead of markdown
@@ -185,6 +192,8 @@ Your task:
    - Level 3: 4 spaces
    - Level 4: 6 spaces
 
+**JSON Syntax Rules:** Escape double quotes in strings with \\", use commas between all properties, no trailing commas.
+
 Output STRICT JSON ONLY:
 {
   "diagramType": "mindmap | graph | flowchart",
@@ -210,6 +219,8 @@ Internal steps (do NOT output):
 2. Identify 1–2 key logical relationships.
 3. Translate relationships into visual metaphors.
 4. Decide appropriate style and mood.
+
+**JSON Syntax Rules:** Escape double quotes in strings with \\", use commas between all properties, no trailing commas.
 
 Output STRICT JSON ONLY:
 {
@@ -863,7 +874,7 @@ async function getOrCreateConversation(actor, conversationId) {
       is_public: false,
       tags: ['chat'],
       is_demo: actor.type === 'guest',
-      expires_at: actor.type === 'guest' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
+      expires_at: actor.type === 'guest' ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() : null,
       timestamp: new Date().toISOString()
     })
     .select()
@@ -1580,7 +1591,7 @@ export default async function handler(req, res) {
                 message_count: messages.length,
                 tags: [],
                 is_demo: actor.type === 'guest',
-                expires_at: actor.type === 'guest' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null,
+                expires_at: actor.type === 'guest' ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString() : null,
                 timestamp: new Date().toISOString()
               });
             

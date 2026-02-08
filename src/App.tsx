@@ -5,6 +5,7 @@ import { ChatHistoryPage, ChatSession } from './components/ChatHistoryPage';
 import { ChatHistoryDetailPage } from './components/ChatHistoryDetailPage';
 import { CommunityPage, Post, CommunityTag } from './components/CommunityPage';
 import { CommunityDetailPage } from './components/CommunityDetailPage';
+import { CommunityFeedPage } from './components/CommunityFeedPage';
 import { ProfilePage } from './components/ProfilePage';
 import { motion, AnimatePresence } from 'motion/react';
 import { LandingPage } from './components/LandingPage';
@@ -41,12 +42,13 @@ const mapPost = (post: ApiCommunityPost): Post => ({
   likes: post.likes,
   comments: post.comments,
   timestamp: new Date(post.timestamp),
-  tags: post.tags
+  tags: post.tags,
+  communityName: post.communityName ?? undefined
 });
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<
-    'chat' | 'archive' | 'chat-history' | 'chat-history-detail' | 'community' | 'profile' | 'community-detail'
+    'chat' | 'archive' | 'chat-history' | 'chat-history-detail' | 'community' | 'profile' | 'community-detail' | 'community-feed'
   >('chat');
   const [viewingCommunityPost, setViewingCommunityPost] = useState<string | null>(null);  // ✅ 改为 postId
   const [viewingHistorySession, setViewingHistorySession] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export default function App() {
   const [likedPosts, setLikedPosts] = useState<string[]>([]);
   const [bookmarkedPosts, setBookmarkedPosts] = useState<string[]>([]);
   const [communityActiveTab, setCommunityActiveTab] = useState<'following' | 'discover'>('following');
+  const [viewingCommunity, setViewingCommunity] = useState<CommunityTag | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -128,6 +131,11 @@ export default function App() {
   const handleNavigateToCommunity = (postId: string) => {
     setViewingCommunityPost(postId);
     setCurrentPage('community-detail');
+  };
+
+  const handleEnterCommunity = (community: CommunityTag) => {
+    setViewingCommunity(community);
+    setCurrentPage('community-feed');
   };
 
   const refreshHistory = useCallback(async () => {
@@ -308,10 +316,10 @@ export default function App() {
         {showLanding && <LandingPage onEnter={() => setShowLanding(false)} />}
       </AnimatePresence>
 
-      {/* SVG Filters for hand-drawn effect */}
+      {/* SVG Filters for hand-drawn effect；x/y/width/height 限制输出在源图内，避免滤镜溢出产生下方灰条 */}
       <svg style={{ position: 'absolute', width: 0, height: 0 }}>
         <defs>
-          <filter id="hand-drawn">
+          <filter id="hand-drawn" x="0" y="0" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" result="noise" />
             <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" />
           </filter>
@@ -584,6 +592,7 @@ export default function App() {
               onToggleBookmark={handleToggleBookmark}
               onFollowCommunity={handleFollowCommunity}
               onUnfollowCommunity={handleUnfollowCommunity}
+              onEnterCommunity={handleEnterCommunity}
             />
           )}
           {currentPage === 'chat-history-detail' && viewingHistorySession && (
@@ -597,9 +606,31 @@ export default function App() {
               postId={viewingCommunityPost} 
               onBack={() => {
                 setCurrentPage('community');
-                // 返回时刷新 Following 列表
                 refreshCommunityMeta();
               }} 
+            />
+          )}
+          {currentPage === 'community-feed' && viewingCommunity && (
+            <CommunityFeedPage
+              community={viewingCommunity}
+              isJoined={followedCommunities.some((f) => f.name === viewingCommunity.name)}
+              onBack={() => setCurrentPage('community')}
+              onJoinCommunity={async () => {
+                if (followedCommunities.some((f) => f.name === viewingCommunity.name)) {
+                  await handleUnfollowCommunity(viewingCommunity.name);
+                } else {
+                  await handleFollowCommunity(viewingCommunity);
+                }
+                await refreshCommunityMeta();
+              }}
+              onSelectPost={(postId) => {
+                setViewingCommunityPost(postId);
+                setCurrentPage('community-detail');
+              }}
+              likedPosts={likedPosts}
+              bookmarkedPosts={bookmarkedPosts}
+              onToggleLike={handleToggleLike}
+              onToggleBookmark={handleToggleBookmark}
             />
           )}
           {currentPage === 'profile' && profile && (

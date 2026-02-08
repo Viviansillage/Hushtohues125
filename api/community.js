@@ -286,17 +286,25 @@ export default async function handler(req, res) {
       
       // ========== Discover Feed: Pure community_posts view ==========
       if (discover === 'true' || req.url?.includes('discover')) {
-        console.log('[Discover List] 🔍 Querying community_posts (single source of truth)...');
+        const communityParam = url.searchParams.get('community');
+        console.log('[Discover List] 🔍 Querying community_posts...', communityParam ? { community: communityParam } : '');
         
-        // ✅ ONLY query community_posts table - NO history/seed/demo mixing
-        // Filter: is_public=true AND (expires_at is null OR expires_at > now())
-        const { data: publicPosts, error: postsError } = await supabase
+        let query = supabase
           .from('community_posts')
-          .select('id, session_id, author_name, author_type, author_id, title, cover_image_url, tags, created_at, likes, comments')
+          .select('id, session_id, author_name, author_type, author_id, title, cover_image_url, tags, created_at, likes, comments, community_tag_id')
           .eq('is_public', true)
-          .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())  // ✅ Not expired
+          .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
           .order('created_at', { ascending: false })
           .limit(50);
+        if (communityParam && communityParam.trim()) {
+          const { data: tagRow } = await supabase
+            .from('community_tags')
+            .select('id')
+            .eq('name', communityParam.trim())
+            .maybeSingle();
+          if (tagRow?.id) query = query.eq('community_tag_id', tagRow.id);
+        }
+        const { data: publicPosts, error: postsError } = await query;
         
         if (postsError) {
           console.error('[Discover List] ❌ DB error:', postsError);
@@ -328,7 +336,8 @@ export default async function handler(req, res) {
           likes: post.likes || 0,
           comments: post.comments || 0,
           timestamp: post.created_at,  // ✅ Use created_at consistently
-          tags: filterSystemTags(post.tags || [])
+          tags: filterSystemTags(post.tags || []),
+          communityName: null  // optional: resolve from community_tag_id if needed
         }));
         
         console.log('[Discover List] ✅ Returning', formatted.length, 'posts');
@@ -643,7 +652,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
     // Query: SELECT * FROM community_posts WHERE id=postId AND is_public=true
     const { data: communityPost, error: postError } = await supabase
       .from('community_posts')
-      .select('id, session_id, author_name, author_type, author_id, created_at, title, tags, likes, comments')
+      .select('id, session_id, author_name, author_type, author_id, created_at, title, tags, likes, comments, community_tag_id')
       .eq('id', postId)
       .eq('is_public', true)
       .maybeSingle();
@@ -714,9 +723,27 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       console.error('[CommunityDetail] Messages query error:', messagesError);
     }
 
-    // 5. 检查当前用户是否关注了该社区（如果有 community_tag_id）
+    // 5. 分区名称（用于展示与 follow 校验）及 joined
+    let communityName = null;
+    if (communityPost.community_tag_id) {
+      const { data: tagRow } = await supabase
+        .from('community_tags')
+        .select('name')
+        .eq('id', communityPost.community_tag_id)
+        .maybeSingle();
+      if (tagRow?.name) communityName = tagRow.name;
+    }
     let joined = false;
-    // TODO: 如果需要 following 功能，这里查询 user_followed_communities
+    if (communityPost.community_tag_id) {
+      const { data: existing } = await supabase
+        .from('user_followed_communities')
+        .select('id')
+        .eq('actor_type', actor.type)
+        .eq('actor_id', actor.id)
+        .eq('community_tag_id', communityPost.community_tag_id)
+        .maybeSingle();
+      joined = !!existing;
+    }
 
     // 6. 组装 canvas 数据（从 chat_history.content_json.artifacts 读取）
     // ✅ 只包含用户 Save 的图片和 mindmap
@@ -749,6 +776,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       content: history.content_json?.content || '',
       contentJson: history.content_json || null,  // ✅ Pass complete contentJson with layout
       tags: filterSystemTags(history.tags || communityPost.tags || []),
+      communityName: communityName || null,  // ✅ 分区名称（7 个固定分区之一）
       isPublic: true,
       readOnly: true,  // ✅ 强制只读
       stats: {
@@ -809,10 +837,10 @@ async function handleCommunityDetail(req, res, sessionId) {
       actor: { type: actor.type, id: actor.id.slice(0, 8) + '...' }
     });
     
-    // 1. 验证该 session 是否已发布为 public（不 join community_tags）
+    // 1. 验证该 session 是否已发布为 public（含 community_tag_id 用于分区展示）
     const { data: publicRef, error: refError } = await supabase
       .from('community_posts')
-      .select('session_id, author_name, author_type, author_id, likes, comments, views, created_at')
+      .select('session_id, author_name, author_type, author_id, likes, comments, views, created_at, community_tag_id')
       .eq('session_id', sessionId)
       .eq('is_public', true)
       .maybeSingle();
@@ -858,7 +886,16 @@ async function handleCommunityDetail(req, res, sessionId) {
       console.error('[handleCommunityDetail] Messages query error:', messagesError);
     }
 
-    // 5. 检查当前用户是否关注了该社区
+    // 5. 分区名称与 joined
+    let communityName = null;
+    if (publicRef.community_tag_id) {
+      const { data: tagRow } = await supabase
+        .from('community_tags')
+        .select('name')
+        .eq('id', publicRef.community_tag_id)
+        .maybeSingle();
+      if (tagRow?.name) communityName = tagRow.name;
+    }
     let joined = false;
     if (publicRef.community_tag_id) {
       const { data: existing } = await supabase
@@ -868,7 +905,6 @@ async function handleCommunityDetail(req, res, sessionId) {
         .eq('actor_id', actor.id)
         .eq('community_tag_id', publicRef.community_tag_id)
         .maybeSingle();
-      
       joined = !!existing;
     }
 
@@ -901,6 +937,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       messages: messages || [],
       content: archive.content_json?.content || '',
       tags: filterSystemTags(archive.tags || []),
+      communityName: communityName || null,
       isPublic: true,
       readOnly: true,  // ✅ 标记为只读
       stats: {

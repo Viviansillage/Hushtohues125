@@ -306,7 +306,7 @@ const DraggableCanvasItemCard = ({
                 style={{ borderRadius: '255px 15px 225px 15px / 15px 225px 15px 255px', filter: 'url(#hand-drawn-border)' }}
               />
               <div className="w-full h-full p-2 overflow-hidden" style={{ borderRadius: '2px' }}>
-                <img src={item.content} alt="Content" className="w-full h-full object-cover pointer-events-none grayscale-[0.2] contrast-[1.1]" draggable={false} />
+                <img src={item.content} alt="Content" className="w-full h-full object-contain pointer-events-none grayscale-[0.2] contrast-[1.1]" draggable={false} />
               </div>
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-32 h-10 bg-[#fdfbf7] opacity-90 rotate-2 shadow-sm border border-[#1a1a1a]/10" style={{ clipPath: 'polygon(5% 0%, 95% 0%, 100% 5%, 100% 95%, 95% 100%, 5% 100%, 0% 95%, 0% 5%)', maskImage: 'linear-gradient(45deg, transparent 5px, black 5px)' }} />
             </div>

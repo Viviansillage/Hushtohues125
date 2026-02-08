@@ -35,7 +35,9 @@ service_role: eyJhbGci...
 
 ### 3. Setup Database
 
-**SQL Editor** → New query → Copy content from `supabase/schema.sql` → Run
+**SQL Editor** → New query → Run in order:
+1. `supabase/reset-database.sql` (creates all tables)
+2. Optionally `supabase/seed.sql` (initial data). See `supabase/README.md` for details.
 
 ### 4. Create Storage
 
@@ -54,6 +56,7 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-key
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
 ### 2. Install & Start
@@ -61,10 +64,10 @@ SUPABASE_SERVICE_KEY=your-service-key
 ```bash
 npm install
 node supabase/migrate-data.js  # Optional: migrate test data
-npm run dev:all
+npm run dev
 ```
 
-Visit http://localhost:3000
+Visit http://localhost:3000。完整 API 需部署到 Vercel 后使用；本地仅前端，或可运行 `node local-dev-server.js`（端口 3001）模拟部分 API。
 
 ---
 
@@ -86,6 +89,7 @@ SUPABASE_URL
 SUPABASE_SERVICE_KEY
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
+GEMINI_API_KEY
 
 # 4. Deploy (1-2 min)
 ```
@@ -102,6 +106,7 @@ vercel env add SUPABASE_URL
 vercel env add SUPABASE_SERVICE_KEY
 vercel env add VITE_SUPABASE_URL
 vercel env add VITE_SUPABASE_ANON_KEY
+vercel env add GEMINI_API_KEY
 vercel --prod
 ```
 
@@ -113,14 +118,14 @@ vercel --prod
 
 1. Pull code: `git pull && npm install`
 2. Get `.env.local` config from team lead
-3. Start: `npm run dev:all`
+3. Start: `npm run dev`
 
 ### Workflow
 
 ```bash
 git pull              # Always pull first
 # Make changes...
-npm run dev:all      # Test locally
+npm run dev          # Test locally (API 需部署到 Vercel 或本地运行 local-dev-server.js)
 git add .
 git commit -m "feat: description"
 git push             # Vercel auto-deploys
@@ -135,6 +140,7 @@ VITE_SUPABASE_URL=https://...
 VITE_SUPABASE_ANON_KEY=...
 SUPABASE_URL=https://...
 SUPABASE_SERVICE_KEY=...
+GEMINI_API_KEY=...
 ```
 
 Share via private message only.

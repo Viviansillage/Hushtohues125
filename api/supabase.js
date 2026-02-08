@@ -171,6 +171,85 @@ JSON:`;
   }
 };
 
+// =====================
+// Community category classification (7 fixed partitions)
+// =====================
+
+/** Valid community tag names — must match DB after migrate-community-to-seven-categories.sql */
+export const COMMUNITY_CATEGORY_NAMES = [
+  'Entertainment',
+  'Music',
+  'Games',
+  'Creative',
+  'Technology',
+  'Lifestyle',
+  'Business'
+];
+
+const COMMUNITY_CLASSIFICATION_PROMPT = `You classify the given content into exactly one of the following 7 community categories. Return ONLY valid JSON in the format: {"community":"CategoryName"}.
+
+Categories (choose exactly one by name):
+
+- **Entertainment**: Film, TV, anime, IP/franchises, sports events (e.g. Olympics, F1), general entertainment discussion.
+
+- **Music**: Music content, artists, albums, live shows, awards (e.g. Grammys).
+
+- **Games**: Video games, gameplay, game communities, game-related works (e.g. Stardew Valley).
+
+- **Creative**: Creation, aesthetics, imagery, design, journaling, Polaroid, mini print, handcrafts.
+
+- **Technology**: Tech, gadgets, products (e.g. Apple Watch), software, digital tools.
+
+- **Lifestyle**: Lifestyle, consumer interests, perfume, toys, blind boxes, cooking, plants, daily life.
+
+- **Business**: Business, brands, industries, markets, commercial logic behind trends.
+
+Rules:
+- Output only the JSON object, no other text.
+- The "community" value must be exactly one of: Entertainment, Music, Games, Creative, Technology, Lifestyle, Business.
+- Choose the single best-matching category. If ambiguous, pick the primary theme.`;
+
+/**
+ * Classify canvas text into one of the 7 fixed community categories using Gemini.
+ * @param {string} text - Canvas content (title + items text, e.g. from extractCanvasText).
+ * @returns {Promise<string|null>} One of COMMUNITY_CATEGORY_NAMES, or null on failure/empty.
+ */
+export const classifyCommunityCategory = async (text) => {
+  if (!text || !text.trim()) return null;
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn('[Community] GEMINI_API_KEY not configured');
+    return null;
+  }
+
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const fullPrompt = `${COMMUNITY_CLASSIFICATION_PROMPT}
+
+Content to classify:
+${text.slice(0, 6000)}
+
+JSON:`;
+
+    const result = await model.generateContent(fullPrompt);
+    const responseText = result?.response?.text?.() || '';
+    const parsed = parseTagJson(responseText);
+    const name = parsed?.community;
+    if (typeof name !== 'string' || !COMMUNITY_CATEGORY_NAMES.includes(name)) {
+      console.warn('[Community] Invalid or missing category in response:', name);
+      return null;
+    }
+    return name;
+  } catch (error) {
+    console.warn('[Community] Classification failed:', error?.message || error);
+    return null;
+  }
+};
+
 /**
  * 上传图片到 Supabase Storage
  * @param {string} base64Data - Base64 编码的图片数据（不含 data:image/... 前缀）
@@ -384,31 +463,69 @@ export async function getCommunityPosts() {
 
 export async function getCommunityMeta(req = null) {
   const actor = req ? getActor(req) : { type: 'guest', id: 'default' };
-  
-  // 辅助函数：确保 tag 有完整结构
-  const ensureTagStructure = (tag, name) => {
-    if (!name) return null;
-    return {
-      name: name,
-      stats: {
-        totalPosts: tag?.total_posts || Math.floor(Math.random() * 1000) + 100,
-        members: tag?.member_count || Math.floor(Math.random() * 5000) + 500,
-        online: Math.floor(Math.random() * 100) + 10,
-        postsToday: Math.floor(Math.random() * 50) + 5
-      },
-      trending: ['#creative', '#design', '#art']
-    };
-  };
-  
+
   try {
     // 查询所有社区标签
     const { data: allTags, error: tagsError } = await supabase
       .from('community_tags')
       .select('*')
       .order('member_count', { ascending: false });
-    
+
     if (tagsError) throw tagsError;
-    
+
+    // 拉取公开帖子，用于计算各分区的 totalPosts、postsToday、trending（真实数据）
+    const { data: postsRows } = await supabase
+      .from('community_posts')
+      .select('community_tag_id, tags, created_at')
+      .eq('is_public', true)
+      .not('community_tag_id', 'is', null);
+
+    const startOfTodayUTC = new Date();
+    startOfTodayUTC.setUTCHours(0, 0, 0, 0);
+
+    const statsByTagId = {};
+    (postsRows || []).forEach((row) => {
+      const tagId = row.community_tag_id;
+      if (!tagId) return;
+      if (!statsByTagId[tagId]) {
+        statsByTagId[tagId] = { totalPosts: 0, postsToday: 0, tagCounts: {} };
+      }
+      statsByTagId[tagId].totalPosts += 1;
+      const created = new Date(row.created_at);
+      if (created >= startOfTodayUTC) statsByTagId[tagId].postsToday += 1;
+      (row.tags || []).forEach((t) => {
+        const key = String(t).trim().toLowerCase();
+        if (!key) return;
+        statsByTagId[tagId].tagCounts[key] = (statsByTagId[tagId].tagCounts[key] || 0) + 1;
+      });
+    });
+
+    // 每个分区取 top 5 标签作为 trending（带 #，与前端展示一致）
+    Object.keys(statsByTagId).forEach((tagId) => {
+      const tagCounts = statsByTagId[tagId].tagCounts;
+      statsByTagId[tagId].trending = Object.entries(tagCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([tag]) => (tag.startsWith('#') ? tag : `#${tag}`));
+    });
+
+    const ensureTagStructure = (tag, name) => {
+      if (!name) return null;
+      const id = tag?.id;
+      const stats = id ? statsByTagId[id] : null;
+      return {
+        name: name,
+        stats: {
+          totalPosts: stats?.totalPosts ?? tag?.total_posts ?? 0,
+          members: tag?.member_count ?? 0,
+          online: 0,
+          postsToday: stats?.postsToday ?? 0
+        },
+        trending: (stats?.trending?.length ? stats.trending : ['#Beginner Guide', '#Showcase', '#Weekly Challenge']),
+        createdAt: tag?.created_at || null
+      };
+    };
+
     // 查询用户关注的社区（支持 guest）
     const { data: followedData, error: followedError } = await supabase
       .from('user_followed_communities')

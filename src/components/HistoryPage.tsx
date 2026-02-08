@@ -35,6 +35,25 @@ interface HistoryPageProps {
   onDeleteHistory?: (id: string) => void;
 }
 
+/** 卡片底部行：Delete + Public/Private Toggle，同一高度对齐 */
+const CardBottomRow = ({ onDelete, isPublic, onToggle }: { onDelete: (e: React.MouseEvent) => void; isPublic: boolean; onToggle: () => void }) => (
+  <div className="flex items-center justify-between w-full mt-3">
+    <button
+      onClick={(e) => { e.stopPropagation(); onDelete(e); }}
+      className="w-8 h-8 flex items-center justify-center flex-shrink-0 border-2 border-[#1a1a1a] bg-[#faf8f3] hover:bg-red-100 transition-colors hand-drawn-border group/delete"
+      title="Delete"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover/delete:text-red-600">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+    </button>
+    <SketchToggle isPublic={isPublic} onToggle={onToggle} label={true} />
+  </div>
+);
+
 const SketchToggle = ({ isPublic, onToggle, label, size = 'md' }: { isPublic: boolean; onToggle: () => void; label?: boolean; size?: 'sm' | 'md' }) => {
   const width = size === 'sm' ? 36 : 48;
   const height = size === 'sm' ? 20 : 28;
@@ -320,7 +339,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 key={chat.id}
-                className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hover:translate-y-[-2px] transition-transform hand-drawn-border wireframe-shadow group relative pb-12 cursor-pointer"
+                className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hover:translate-y-[-2px] transition-transform hand-drawn-border wireframe-shadow group relative cursor-pointer"
                 onClick={() => setSelectedChatId(chat.id)}
               >
                 {/* Folder icon representation */}
@@ -396,7 +415,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
                     {formatDate(chat.timestamp)}
                   </div>
                   
-                  <div className="flex flex-wrap gap-2 mb-2 pr-12">
+                  <div className="flex flex-wrap gap-2 mb-2">
                     {filterSemanticTags(chat.tags).slice(0, 5).map((tag) => (
                       <span
                         key={tag}
@@ -410,28 +429,11 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
                       </span>
                     ))}
                   </div>
-                </div>
 
-                {/* Delete Button */}
-                <button
-                  onClick={(e) => handleDelete(chat.id, e)}
-                  className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center border-2 border-[#1a1a1a] bg-[#faf8f3] hover:bg-red-100 transition-colors hand-drawn-border group/delete"
-                  title="Delete"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover/delete:text-red-600">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    <line x1="10" y1="11" x2="10" y2="17"></line>
-                    <line x1="14" y1="11" x2="14" y2="17"></line>
-                  </svg>
-                </button>
-
-                {/* Public Toggle Slider */}
-                <div className="absolute bottom-3 right-3">
-                  <SketchToggle 
-                    isPublic={chat.isPublic} 
-                    onToggle={() => togglePublic(chat.id)} 
-                    label={true}
+                  <CardBottomRow
+                    onDelete={(e) => handleDelete(chat.id, e)}
+                    isPublic={chat.isPublic}
+                    onToggle={() => togglePublic(chat.id)}
                   />
                 </div>
               </motion.div>

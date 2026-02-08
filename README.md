@@ -1,81 +1,173 @@
-# Hush to Hues 🎨
+# Hush to Hues
 
-AI-powered creative assistant with hand-drawn sketch aesthetic. Transform your thoughts into mindmaps and images, share with the community.
-
-## ✨ Features
-
-- 🤖 **AI Chat** - Natural conversation with Gemini 2.0 Flash
-- 🧠 **Mindmap Generation** - Auto-generate Mermaid mindmaps
-- 🎨 **Image Generation** - Create images with Gemini 2.5 Flash Image
-- 📚 **History Archive** - Save and browse your creations
-- 🌍 **Community Sharing** - Discover and share creative works
-- ✍️ **Hand-drawn UI** - Unique sketch-style interface
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- Supabase account ([free tier](https://supabase.com))
-- Gemini API key ([get it here](https://aistudio.google.com/apikey))
-
-### Setup
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Configure environment
-cp .env.example .env.local
-# Add your keys to .env.local:
-#   SUPABASE_URL=https://xxx.supabase.co
-#   SUPABASE_SERVICE_KEY=eyJhbGci...
-#   GEMINI_API_KEY=AIza...
-
-# 3. Setup database
-# Run SQL from supabase/schema.sql in Supabase SQL Editor
-# Create Storage bucket: "artifacts" (public access)
-
-# 4. Start development
-npm run dev
-```
-
-Frontend: `http://localhost:5173`
-
-## 📦 Tech Stack
-
-- **Frontend**: React + TypeScript + Vite + Tailwind
-- **Backend**: Vercel Serverless Functions
-- **Database**: Supabase (PostgreSQL + Storage)
-- **AI**: Google Gemini API (2.0 Flash + 2.5 Flash Image)
-
-## 📚 Documentation
-
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide to Vercel
-- **[DOCS.md](DOCS.md)** - API documentation & development guide
-
-## 🛠️ Development
-
-```bash
-# Development mode
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-```
-
-## 🌐 Deploy
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Vercel deployment instructions.
-
-## 📄 License
-
-MIT
+Turns raw thoughts (text or voice) into structured outputs: Mermaid diagrams (mind map, flowchart, or graph—chosen by the model), summaries, and AI-generated images. Hackathon project; supports guest mode, archive, and community sharing.
 
 ---
 
-**Design Credits**: Original Figma design from [Hush to Hues](https://www.figma.com/design/RHXcG8erzo4CbUHz8p3GSm/Hush-to-Hues)
-  
+## Demo
+
+- **Live App:** [https://hushtohues.vercel.app](https://hushtohues.vercel.app)
+- **Demo Video:** [https://example.com/demo-video](https://example.com/demo-video) *(placeholder)*
+
+---
+
+## Core Features
+
+- **Chat-based input** — Conversational interface for thought capture; optional voice input.
+- **AI analysis** — Gemini parses and clarifies user input, returning structured JSON (reply, title, summary, tags, follow-up questions, mindmap skeleton).
+- **Diagram generation** — Mermaid diagrams (mind map, flowchart, or graph) from conversation; diagram type chosen by the model from content structure (hierarchical → mindmap, relational → graph, process → flowchart).
+- **Image generation** — Images generated from conversation context via Gemini image models (e.g. `gemini-2.5-flash-image`); prompt is first produced by a text model.
+- **Archive system** — Save artifacts (diagram + image + metadata) per session; append-only updates per session; list/load by session or ID.
+- **Community sharing** — Publish sessions as posts; discover feed; like, bookmark, follow communities; guest users can publish with `X-Guest-ID`.
+- **Guest mode** — Use without auth via `X-Guest-ID` header; guest data can be marked demo and given an expiry (e.g. 7 days for history, 60 days for demo flag).
+
+---
+
+## Gemini Integration
+
+### Models
+
+| Use case | Model | Notes |
+|----------|--------|------|
+| Chat, title generation, tagging, image-prompt generation | `gemini-2.5-flash` | Via `generateContent` (REST) or `@google/generative-ai` SDK |
+| Image generation | `gemini-2.5-flash-image` (default) | Overridable with `GEMINI_IMAGE_MODEL`; falls back to model detection when unavailable |
+
+Image generation uses the Gemini Developer API (generativelanguage.googleapis.com). Imagen (`imagen-*`) is not used here (Vertex-only).
+
+### Backend usage
+
+- **Chat:** `api/chat.js` builds a message list, sends it to Gemini with a system prompt that enforces a **strict JSON schema** (reply, title, summary, tags, followUpQuestions, mindmap with root/branches/relations). Response is parsed with `safeParseGeminiJson()` (extract first `{...}`, fallback title on parse failure).
+- **Diagram:** A second Gemini call with `MINDMAP_PROMPT` takes the structured understanding and returns JSON with `diagramType` (`mindmap` | `graph` | `flowchart`), `title`, `summary`, `mermaidCode`. Mermaid is rendered in the frontend.
+- **Image:** An `IMAGE_PROMPT` call returns JSON with `imagePrompt` (and title/summary); that prompt is sent to `callGeminiFlashImage()` (REST to `gemini-2.5-flash-image` or env model) which returns inline base64 image data.
+- **Tagging:** `api/supabase.js` uses `gemini-2.5-flash` for tag suggestions.
+
+### Error handling and retries
+
+- **Retries:** `retryWithBackoff(fn, 3, 1000)` retries on 429, 503, ECONNRESET, timeout/ETIMEDOUT with exponential backoff + jitter; other errors are thrown immediately.
+- **Parsing:** Malformed or non-JSON Gemini output is handled by `safeParseGeminiJson()` with a fallback title and defensive extraction of a single JSON object.
+
+---
+
+## Architecture
+
+- **Frontend:** React (TypeScript) SPA, Vite, Tailwind; talks to backend via relative `/api/*` URLs.
+- **Backend:** Node.js serverless functions on Vercel; each file under `api/` is a serverless handler (e.g. `api/chat.js`, `api/history.js`, `api/community.js`, `api/archive.js`).
+- **Database / storage:** Supabase (PostgreSQL + Storage). Tables include profiles, chat_history, community_posts, archives, etc.; storage for images/artifacts.
+- **AI:** Google Gemini API (see [Gemini Integration](#gemini-integration)).
+
+```
+                   ┌──────────────────────────────────────────┐
+                   │           Vercel (hosting)               │
+                   │  ┌────────────┐     ┌─────────────────┐  │
+                   │  │   Static   │     │  Serverless     │  │
+                   │  │   (Vite    │     │  Functions      │  │
+  Browser          │  │   build)   │     │  (api/*.js)     │  │
+    │              │  └──────┬─────┘     └────────┬────────┘  │
+    │  /api/* ────────────────────────────────────┤           │
+    └──────────────│  React SPA (/)               │           │
+                   └──────────────────────────────┼───────────┘
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────────────┐
+                    │                             │                             │
+                    ▼                             ▼                             ▼
+            ┌───────────────┐             ┌───────────────┐             ┌───────────────┐
+            │   Supabase    │             │  Gemini API   │             │   Supabase    │
+            │  (PostgreSQL) │             │ chat, diagram │             │   (Storage)   │
+            │  profiles,    │             │ image         │             │   artifacts   │
+            │  history,     │             │               │             │   images      │
+            │  community    │             └───────────────┘             └───────────────┘
+            └───────────────┘
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technologies |
+|-------|----------------|
+| **Frontend** | React 18, TypeScript, Vite 6, Tailwind CSS, Radix UI, Mermaid, Motion, Recharts |
+| **Backend** | Node.js (ESM), Vercel Serverless Functions |
+| **Database** | Supabase (PostgreSQL) |
+| **Storage** | Supabase Storage |
+| **AI** | Google Gemini API (`@google/generative-ai`, REST for image) |
+| **Deployment** | Vercel |
+
+---
+
+## Project Structure
+
+```
+├── api/                    # Vercel serverless handlers
+│   ├── chat.js             # Chat, diagram (mindmap/graph/flowchart), image (Gemini); sessions
+│   ├── history.js          # Chat history CRUD; publish to community
+│   ├── history/[id].js     # Single history item, publish action
+│   ├── community.js        # Posts, discover, like, bookmark, follow
+│   ├── profile.js          # User profile
+│   ├── archive.js          # Save/load artifacts by session
+│   ├── health.js           # Health check
+│   ├── supabase.js         # Supabase client, getActor (user/guest), tagging (Gemini)
+│   └── index.js            # Fallback router for /api
+├── src/
+│   ├── components/         # Pages and UI (ChatPage, HistoryPage, CommunityPage, etc.)
+│   ├── lib/                # api.ts (API client), chatStore, guest.ts
+│   ├── App.tsx, main.tsx
+│   └── index.css, styles/
+├── supabase/               # SQL migrations, seed, cleanup scripts, migrate-data.js
+├── index.html
+├── vite.config.ts
+├── vercel.json             # SPA rewrite; /api and /assets excluded
+└── package.json
+```
+
+---
+
+## Local Development
+
+### Environment variables
+
+Create `.env.local` in the project root (see `.env.example` if present). Required for full functionality:
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_SUPABASE_URL` | Supabase project URL (frontend) |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key (frontend) |
+| `SUPABASE_URL` | Supabase project URL (serverless) |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key (serverless) |
+| `GEMINI_API_KEY` | Gemini API key (chat, diagram, image, tagging) |
+
+Optional: `GEMINI_IMAGE_MODEL` — override image model (default `gemini-2.5-flash-image`).
+
+### Install and run
+
+```bash
+npm install
+npm run dev
+```
+
+- **Frontend:** Dev server runs (default port in `vite.config.ts`). All `/api/*` requests must hit a backend; locally that is either:
+  - **Deployed backend:** Use Vercel dev or a deployed app and proxy `/api` to it, or
+  - **Local API stub:** Run `node local-dev-server.js` (serves a subset of API on port 3001) and ensure Vite proxy sends `/api` to `http://localhost:3001` (see `vite.config.ts`).
+- **Backend:** Full API runs on Vercel when deployed. For local backend testing, use `node local-dev-server.js` or deploy to Vercel.
+
+```bash
+npm run build          # Production build
+npm run preview        # Preview production build
+npm run cleanup-storage # Run supabase/cleanup-storage-before-today.js
+```
+
+---
+
+## Documentation
+
+- **[DOCS.md](DOCS.md)** — Full API reference, Gemini integration details, testing guide, storage setup, troubleshooting.
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Supabase + Vercel setup, environment variables, team workflow, deployment troubleshooting.
+
+---
+
+## Future Work
+
+- Auth (e.g. Supabase Auth) alongside guest mode
+- Rate limiting and quotas for Gemini and publish
+- Automated tests (API handlers and critical flows)
+- Community discovery (tags, search, moderation)
+- Voice-to-text pipeline and accessibility for generated visuals

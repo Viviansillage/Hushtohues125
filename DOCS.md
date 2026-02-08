@@ -59,7 +59,7 @@ Send message and get AI response.
 
 **POST /api/chat?action=artifact**
 
-Generate mindmap, image, or save to archive.
+Generate diagram (mindmap / graph / flowchart), image, or save to archive.
 
 ```json
 // Request
@@ -195,7 +195,39 @@ Get community posts (seed content + user posts).
 ]
 ```
 
-#### 5. Debug Endpoints
+#### 5. Archive API (Save to Canvas)
+
+One archive per session; saving a message or artifact appends to that session’s `content_json`.
+
+**`content_json` shape:**
+- `items` — Canvas elements (image, text, diagram blocks with position/size).
+- `savedMessages` — Array of message IDs already saved to the canvas.
+- `artifacts` — Saved artifact entries (image/mindmap).
+- `sessionId` — Session id.
+
+**POST /api/archive?action=saveMessage**
+
+Save a single message (with or without artifact) to the canvas.
+
+```json
+// Request
+{ "sessionId": "session-xyz", "messageId": "msg-123", "messageText": "...", "artifact": { "type": "image", "data": { ... } } }
+// Response
+{ "ok": true, "archiveId": "uuid", "messageId": "msg-123", "itemsAdded": 2 }
+```
+
+**GET /api/archive?action=getSavedMessages&sessionId=xxx**
+
+Return list of message IDs already saved for the session.
+
+```json
+// Response
+{ "ok": true, "savedMessages": ["msg-123", "msg-456"] }
+```
+
+Backend deduplicates by `messageId`; frontend shows "✓ Saved" and disables the Save button for those messages.
+
+#### 6. Debug Endpoints
 
 **GET /api/debug/models**
 
@@ -211,9 +243,8 @@ Check image generation setup status.
 
 ### Models Used
 
-- **Chat**: `gemini-2.0-flash-exp` - Fast conversational AI
-- **Image**: `gemini-2.5-flash-image` - Image generation
-- **Fallback**: `gemini-1.5-flash` - Stable backup
+- **Chat, title, tagging, diagram prompt**: `gemini-2.5-flash` - Conversation and structured JSON
+- **Image generation**: `gemini-2.5-flash-image` - Image generation (overridable via `GEMINI_IMAGE_MODEL`)
 
 ### Chat Configuration
 
@@ -578,7 +609,7 @@ vercel --prod                # Manual deploy
 - `api/supabase.js` - Database + Storage utilities
 - `src/lib/api.ts` - Frontend API client
 - `src/lib/guest.ts` - Guest ID + localStorage management
-- `supabase/schema.sql` - Database schema
+- `supabase/reset-database.sql` - Database schema (creates all tables); see `supabase/README.md` for run order
 - `test-image-api.js` - Local image testing script
 
 ### Support Resources

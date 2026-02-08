@@ -1,4 +1,13 @@
-import { getHistory, getActor, supabase, extractCanvasText, filterSystemTags, generateSemanticTags } from './supabase.js';
+import { getHistory, getActor, supabase, extractCanvasText, filterSystemTags, generateSemanticTags, classifyCommunityCategory } from './supabase.js';
+
+/** 从 chat_history 提取首图：优先 preview_images，空时从 content_json.items 推导 */
+function deriveCoverImage(item) {
+  const previews = Array.isArray(item?.preview_images) ? item.preview_images : [];
+  if (previews.length > 0) return previews[0];
+  const items = item?.content_json?.items || [];
+  const firstImage = items.find((i) => i?.type === 'image' && i?.content);
+  return firstImage?.content || null;
+}
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -81,6 +90,11 @@ export default async function handler(req, res) {
           return hasItems || hasArtifacts;
         };
 
+        const derivePreviewImages = (item) => {
+          const first = deriveCoverImage(item);
+          return first ? [first] : [];
+        };
+
         // 健壮地解析每条记录，跳过坏数据
         const history = (data || [])
           .filter(hasArchiveContent)
@@ -92,7 +106,7 @@ export default async function handler(req, res) {
                 title: item.title || 'Untitled',
                 messageCount: item.message_count || 0,
                 lastMessage: item.last_message || '',
-                previewImages: Array.isArray(item.preview_images) ? item.preview_images : [],
+                previewImages: derivePreviewImages(item),
                 isPublic: item.is_public || false,
                 tags: filterSystemTags(Array.isArray(item.tags) ? item.tags : []),
                 timestamp: item.timestamp || new Date().toISOString(),
@@ -128,7 +142,7 @@ export default async function handler(req, res) {
       
       // 计算过期时间：guest demo 7 天后过期
       const expiresAt = actor.type === 'guest' 
-        ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
         : null;
       
       const { data, error } = await supabase
@@ -227,6 +241,7 @@ async function handleHistoryById(req, res, id) {
       // 更新 chat_history
       const updates = {};
       let publishTags = null;
+      let communityCategoryName = null;
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
       if (body.contentJson !== undefined) updates.content_json = body.contentJson;
@@ -237,6 +252,7 @@ async function handleHistoryById(req, res, id) {
         const canvasText = extractCanvasText(contentForTags, titleForTags);
         publishTags = await generateSemanticTags(canvasText);
         updates.tags = publishTags;
+        communityCategoryName = await classifyCommunityCategory(canvasText);
       } else if (body.tags !== undefined) {
         updates.tags = filterSystemTags(body.tags);
       }
@@ -274,9 +290,8 @@ async function handleHistoryById(req, res, id) {
           });
           
           // Public = true: 在 community_posts 中 upsert 引用记录（不复制内容）
-          const coverImage = Array.isArray(data.preview_images) && data.preview_images.length > 0
-            ? data.preview_images[0]
-            : null;
+          // cover_image_url: 与 Archive 一致，优先 preview_images，空时从 content_json.items 推导
+          const coverImage = deriveCoverImage(data);
           
           // ✅ 获取 author_name（优先使用前端传入的 authorDisplayName，供无帖子的 guest 首次发布使用）
           let authorName = publishActor.name || `Guest-${publishActor.id.slice(-6)}`;
@@ -302,13 +317,25 @@ async function handleHistoryById(req, res, id) {
             ? publishTags
             : filterSystemTags(data.tags || []);
 
+          let communityTagId = null;
+          if (communityCategoryName) {
+            const { data: tagRow } = await supabase
+              .from('community_tags')
+              .select('id')
+              .eq('name', communityCategoryName)
+              .maybeSingle();
+            if (tagRow?.id) communityTagId = tagRow.id;
+          }
+
           console.log('[history/[id]] Upserting to community_posts:', {
             session_id: item.session_id,
             author_type: publishActor.type || 'guest',
             author_id: publishActor.id,
             author_name: authorName,
             title: data.title || 'Untitled',
-            created_at: createdAt
+            created_at: createdAt,
+            communityCategoryName: communityCategoryName || undefined,
+            communityTagId: communityTagId || undefined
           });
 
           const { data: publishedPost, error: upsertError } = await supabase
@@ -322,6 +349,7 @@ async function handleHistoryById(req, res, id) {
               cover_image_url: coverImage || null,
               title: data.title || 'Untitled',
               tags: tagsForPublish,
+              community_tag_id: communityTagId,
               created_at: createdAt,
               updated_at: new Date().toISOString()
             }, {

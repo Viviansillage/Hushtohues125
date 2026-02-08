@@ -42,6 +42,14 @@ async function ensureImageUrlIsPublic(artifact, actor, sessionId) {
 /** 图片固定宽度，高度按宽高比计算 */
 const FIXED_IMAGE_WIDTH = 400;
 
+/** 提取文本第一句（到句号/问号/叹号/换行或前 50 字） */
+function getFirstSentence(text) {
+  if (!text || typeof text !== 'string') return '';
+  const s = String(text).trim();
+  const match = s.match(/^[^。.!?\n]+[。.!?\n]?/) || [s];
+  return (match[0] || s).trim().substring(0, 50);
+}
+
 /** 根据 imageWidth/imageHeight 计算图片 item 高度，无则用默认 */
 function getImageItemHeight(artifactData) {
   const w = artifactData?.imageWidth;
@@ -364,13 +372,16 @@ export default async function handler(req, res) {
         // ✅ 不存在：创建新archive
         console.log('[Archive Save] Creating new archive for session:', sessionId);
 
-        // ✅ 生成title：优先使用第一条用户消息，其次使用artifact的summary
+        // ✅ 生成title：artifact.title 优先，其次 artifact.summary，若首个存储是文本则用文本第一句
+        const artifactTitle = (effectiveArtifact.data?.title || '').trim();
+        const artifactSummary = (effectiveArtifact.data?.summary || '').trim();
         const userMessages = sessionMessages?.filter(m => m.sender === 'user') || [];
-        const firstUserMsg = userMessages[0]?.text || '';
-        const artifactSummary = effectiveArtifact.data?.summary || '';
-        const title = firstUserMsg.substring(0, 50) 
-          || artifactSummary.substring(0, 50)
-          || `Saved ${effectiveArtifact.type} - ${new Date().toLocaleString()}`;
+        const firstUserMsg = (userMessages[0]?.text || '').trim();
+        const title = (
+          artifactTitle.substring(0, 50) ||
+          artifactSummary.substring(0, 50) ||
+          getFirstSentence(firstUserMsg)
+        ).trim() || `Saved ${effectiveArtifact.type} - ${new Date().toLocaleString()}`;
         
         // 提取图片预览：已通过 ensureImageUrlIsPublic 转为 http
         let previewImages = (effectiveArtifact.type === 'image' && (effectiveArtifact.data?.imageUrl || effectiveArtifact.data?.url))
@@ -749,8 +760,20 @@ export default async function handler(req, res) {
           itemsAdded: newItems.length
         });
       } else {
-        // 创建新archive
-        const title = (effectiveArtifact?.data?.title || messageText).substring(0, 50) || 'Saved Messages';
+        // 创建新archive：artifact.title 优先，其次 artifact.summary，若首个存储是文本则用文本第一句
+        const artifactTitle = (effectiveArtifact?.data?.title || '').trim();
+        const artifactSummary = (effectiveArtifact?.data?.summary || '').trim();
+        const genericPattern = /^(image|mindmap|save) created successfully$/i;
+        const messageOk = messageText && !genericPattern.test(String(messageText).trim());
+        const textFirstSentence = messageOk ? getFirstSentence(messageText) : '';
+        const userMessages = sessionMessages?.filter(m => m.sender === 'user') || [];
+        const firstUserMsg = (userMessages[0]?.text || '').trim();
+        const title = (
+          artifactTitle.substring(0, 50) ||
+          artifactSummary.substring(0, 50) ||
+          textFirstSentence ||
+          getFirstSentence(firstUserMsg)
+        ).trim() || 'Saved Messages';
         const { data: created, error: createError } = await supabase
           .from('chat_history')
           .insert({

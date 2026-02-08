@@ -2,7 +2,7 @@
  * 全局聊天状态管理 - 确保切换页面时对话不丢失
  * localStorage 只存轻量信息（conversationId），messages 存内存
  */
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 
 interface Message {
   id: string;
@@ -68,6 +68,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, conversationId);
   }, [conversationId]);
 
+  // 自动保存当前会话到 sessionStorage（含 image/diagram），刷新后可恢复
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      const tempSession: TempSession = {
+        conversationId,
+        messages,
+        timestamp: Date.now()
+      };
+      try {
+        sessionStorage.setItem(TEMP_SESSION_KEY, JSON.stringify(tempSession));
+      } catch {
+        // sessionStorage full or unavailable
+      }
+      saveTimeoutRef.current = null;
+    }, 500);
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [conversationId, messages]);
+
   const appendMessage = (message: Message) => {
     setMessagesState(prev => [...prev, message]);
   };
@@ -77,6 +100,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   };
 
   const resetChat = () => {
+    sessionStorage.removeItem(TEMP_SESSION_KEY); // 开启新对话时清除，下次从 history 加载时从 DB 拉取（无 image/diagram）
     const newId = generateConversationId();
     console.log('🔄 Reset chat, new conversationId:', newId);
     setConversationId(newId);

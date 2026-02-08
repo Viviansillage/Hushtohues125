@@ -289,6 +289,9 @@ export default async function handler(req, res) {
             summary: effectiveArtifact.data.summary
           };
         }
+        if (effectiveArtifact.type === 'image' && effectiveArtifact.data?.title) {
+          newItem.meta = { title: effectiveArtifact.data.title };
+        }
         
         newItems.push(newItem);
         
@@ -417,6 +420,9 @@ export default async function handler(req, res) {
             title: effectiveArtifact.data.title,
             summary: effectiveArtifact.data.summary
           };
+        }
+        if (effectiveArtifact.type === 'image' && effectiveArtifact.data?.title) {
+          firstItem.meta = { title: effectiveArtifact.data.title };
         }
         
         initialItems.push(firstItem);
@@ -626,7 +632,7 @@ export default async function handler(req, res) {
         if (effectiveArtifact.type === 'image') {
           const imageUrl = effectiveArtifact.data?.imageUrl || effectiveArtifact.data?.url;
           const imageCount = currentItems.filter(i => i.type === 'image').length;
-          newItems.push({
+          const imageItem = {
             id: `img-${imageCount}`,
             type: 'image',
             content: imageUrl,
@@ -634,8 +640,13 @@ export default async function handler(req, res) {
             y: newY,
             width: FIXED_IMAGE_WIDTH,
             height: getImageItemHeight(effectiveArtifact.data),
-            zIndex: currentItems.length + newItems.length + 1
-          });
+            zIndex: currentItems.length + newItems.length + 1,
+            messageId
+          };
+          if (effectiveArtifact.data?.title) {
+            imageItem.meta = { title: effectiveArtifact.data.title };
+          }
+          newItems.push(imageItem);
         } else if (effectiveArtifact.type === 'mindmap') {
           const mindmapCount = currentItems.filter(i => i.type === 'mindmap').length;
           newItems.push({
@@ -647,6 +658,7 @@ export default async function handler(req, res) {
             width: 420,
             height: 280,
             zIndex: currentItems.length + newItems.length + 1,
+            messageId,
             meta: {
               title: effectiveArtifact.data?.title,
               summary: effectiveArtifact.data?.summary
@@ -669,7 +681,8 @@ export default async function handler(req, res) {
             y: newY,
             width: 400,
             height: textHeight,
-            zIndex: currentItems.length + newItems.length + 1
+            zIndex: currentItems.length + newItems.length + 1,
+            messageId
           });
         }
       } else {
@@ -686,7 +699,8 @@ export default async function handler(req, res) {
           y: newY,
           width: 600,  // ← 更宽
           height: textHeight,
-          zIndex: currentItems.length + 1
+          zIndex: currentItems.length + 1,
+          messageId
         });
       }
 

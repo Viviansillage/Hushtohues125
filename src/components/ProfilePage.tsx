@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { toast, Toaster } from 'sonner@2.0.3';
+import { toast, Toaster } from 'sonner';
 import { ApiProfile } from '../lib/api';
 import { setGuestDisplayName } from '../lib/guest';
 

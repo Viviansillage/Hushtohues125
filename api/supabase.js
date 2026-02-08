@@ -37,7 +37,8 @@ export const hasLegacySystemTags = (tags = []) => {
   return tags.some((tag) => SYSTEM_TAGS.has(String(tag).toLowerCase()));
 };
 
-export const extractCanvasText = (contentJson = {}, title = '') => {
+/** @param includeTitleFallback - if true, use title when no other text (e.g. for display); use false for publish check */
+export const extractCanvasText = (contentJson = {}, title = '', includeTitleFallback = true) => {
   const chunks = [];
 
   if (contentJson && Array.isArray(contentJson.items)) {
@@ -52,6 +53,10 @@ export const extractCanvasText = (contentJson = {}, title = '') => {
         const summaryText = cleanTextValue(item.meta.summary);
         if (titleText) chunks.push(titleText);
         if (summaryText) chunks.push(summaryText);
+      }
+      if (item.type === 'image' && item.meta?.title) {
+        const titleText = cleanTextValue(item.meta.title);
+        if (titleText) chunks.push(titleText);
       }
     });
   }
@@ -70,7 +75,7 @@ export const extractCanvasText = (contentJson = {}, title = '') => {
   }
 
   const cleanedTitle = cleanTextValue(title);
-  if (chunks.length === 0 && cleanedTitle) chunks.push(cleanedTitle);
+  if (includeTitleFallback && chunks.length === 0 && cleanedTitle) chunks.push(cleanedTitle);
 
   const combined = chunks.join('\n').trim();
   if (!combined) return '';

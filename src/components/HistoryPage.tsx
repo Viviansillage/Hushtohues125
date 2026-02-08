@@ -33,6 +33,8 @@ interface HistoryPageProps {
   history: ChatHistory[];
   onUpdateHistory: (id: string, updates: Partial<ChatHistory>) => void;
   onDeleteHistory?: (id: string) => void;
+  onRefreshHistory?: () => void;
+  onCanvasClosed?: (sessionId: string) => void;
 }
 
 /** 卡片底部行：Delete + Public/Private Toggle，同一高度对齐 */
@@ -111,7 +113,7 @@ const SketchToggle = ({ isPublic, onToggle, label, size = 'md' }: { isPublic: bo
   );
 };
 
-export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, onDeleteHistory }: HistoryPageProps) {
+export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, onDeleteHistory, onRefreshHistory, onCanvasClosed }: HistoryPageProps) {
   const [viewMode, setViewMode] = useState<'cards' | 'folders'>('cards');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -282,16 +284,25 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
               if (response.ok) {
                 const data = await response.json();
                 const detail = data.ok ? data.item : data;
-                // 总是更新父组件中的历史列表，确保标题同步
-                onUpdateHistory(selectedChatId, { title: detail.title });
-                console.log('[HistoryPage] Updated title after closing canvas:', {
+                onUpdateHistory(selectedChatId, {
+                  title: detail.title,
+                  lastMessage: detail.lastMessage,
+                  previewImages: detail.previewImages ?? []
+                });
+                console.log('[HistoryPage] Updated after closing canvas:', {
                   id: selectedChatId,
-                  newTitle: detail.title
+                  title: detail.title,
+                  lastMessage: detail.lastMessage?.substring(0, 40),
+                  previewImagesCount: detail.previewImages?.length ?? 0
                 });
               }
+              onRefreshHistory?.();
             } catch (error) {
               console.error('Failed to reload archive detail:', error);
+              onRefreshHistory?.();
             }
+            const sessionId = history.find((h) => h.id === selectedChatId)?.sessionId;
+            if (sessionId) onCanvasClosed?.(sessionId);
             setSelectedChatId(null);
           }} 
         />

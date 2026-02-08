@@ -568,8 +568,21 @@ async function handlePublish(req, res, body) {
       }
     }
 
+    const items = history.content_json?.items || [];
+    if (!items.length) {
+      return res.status(400).json({
+        error: 'Cannot publish',
+        message: 'Cannot publish: the canvas is empty. Please add some content before publishing.'
+      });
+    }
     const titleForTags = body.title || history.title || 'Untitled';
-    const canvasText = extractCanvasText(history.content_json, titleForTags);
+    const canvasText = extractCanvasText(history.content_json, titleForTags, false);
+    if (!canvasText || !String(canvasText).trim()) {
+      return res.status(400).json({
+        error: 'Cannot publish',
+        message: 'Cannot publish: the canvas has no text or image/mindmap titles to generate tags and category. Please add some content before publishing.'
+      });
+    }
     const semanticTags = await generateSemanticTags(canvasText);
 
     const { error: updateTagsError } = await supabase

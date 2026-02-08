@@ -26,6 +26,9 @@ interface Message {
 
 interface ChatPageProps {
   onHistorySync?: () => void;
+  /** When set and equal to current conversationId, refetch saved messages and update Save button state (e.g. after closing canvas). */
+  refreshSavedForSessionId?: string | null;
+  onClearedRefreshSavedTrigger?: () => void;
 }
 
 // Add type definition for Web Speech API
@@ -119,7 +122,7 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
   return <div ref={mermaidRef} className="mermaid-container"></div>;
 };
 
-export function ChatPage({ onHistorySync }: ChatPageProps) {
+export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRefreshSavedTrigger }: ChatPageProps) {
   // ✅ 使用全局 store，确保切页不丢
   const { conversationId, messages, appendMessage, setMessages, resetChat, loadSession } = useChatStore();
   
@@ -152,7 +155,7 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
     }
   }, [conversationId]);
 
-  // ✅ 刷新时从数据库恢复历史消息 - ONLY ONCE on mount or conversationId change
+  // ✅ 刷新时恢复消息：优先从 sessionStorage（含 image/diagram），否则从 DB（仅文本）
   useEffect(() => {
     const loadHistoryMessages = async () => {
       // Prevent duplicate loads
@@ -168,6 +171,27 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
         return;
       }
 
+      // 1. 优先从 sessionStorage 恢复（含 image/diagram），刷新后图仍可显示
+      const TEMP_SESSION_KEY = 'hth_temp_session';
+      const stored = sessionStorage.getItem(TEMP_SESSION_KEY);
+      if (stored) {
+        try {
+          const temp = JSON.parse(stored);
+          if (temp?.conversationId === conversationId && Array.isArray(temp.messages) && temp.messages.length > 0) {
+            const restored = temp.messages.map(mapMessage);
+            setMessages(restored);
+            hasLoadedRef.current = true;
+            setIsLoadingHistory(false);
+            isDirtyRef.current = false;
+            console.log('[ChatPage] ♻️ Restored', restored.length, 'messages from sessionStorage (with images/diagrams)');
+            return;
+          }
+        } catch (e) {
+          console.warn('[ChatPage] Failed to parse temp session:', e);
+        }
+      }
+
+      // 2. 否则从 API 加载（仅文本，history 不存 image/diagram）
       try {
         console.log('[ChatPage] 🔄 Loading history for sessionId:', conversationId);
         const response = await fetch(`/api/chat?action=load&sessionId=${conversationId}`, {
@@ -244,6 +268,42 @@ export function ChatPage({ onHistorySync }: ChatPageProps) {
 
     loadHistoryMessages();
   }, [conversationId, setMessages]); // ✅ Removed messages.length dependency
+
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  // ✅ After closing canvas: refetch saved state so Save buttons update
+  useEffect(() => {
+    if (!refreshSavedForSessionId || refreshSavedForSessionId !== conversationId || messages.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const archiveResponse = await fetch(`/api/archive?action=getSavedMessages&sessionId=${conversationId}`, {
+          headers: { 'X-Guest-ID': localStorage.getItem('hushtohues_guest_id') || '' }
+        });
+        if (!archiveResponse.ok || cancelled) return;
+        const archiveData = await archiveResponse.json();
+        const savedMessages: string[] = archiveData.savedMessages || [];
+        if (cancelled) return;
+        const prev = messagesRef.current;
+        setMessages(
+          prev.map((m) => ({
+            ...m,
+            saved: savedMessages.includes(m.id),
+            artifact: m.artifact ? { ...m.artifact, saved: savedMessages.includes(m.id) } : m.artifact
+          }))
+        );
+        onClearedRefreshSavedTrigger?.();
+      } catch (e) {
+        if (!cancelled) onClearedRefreshSavedTrigger?.();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSavedForSessionId, conversationId, setMessages, onClearedRefreshSavedTrigger, messages.length]);
 
   // 自动保存聊天历史（只保存文字，不保存图片）- DEBOUNCED to prevent spam
   useEffect(() => {

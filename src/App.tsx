@@ -27,6 +27,7 @@ import {
   updateProfile
 } from './lib/api';
 import { getGuestDisplayName } from './lib/guest';
+import { toast } from 'sonner';
 
 const mapHistory = (item: ApiHistoryItem): ChatHistory => ({
   ...item,
@@ -65,6 +66,8 @@ export default function App() {
   const [bookmarkedPosts, setBookmarkedPosts] = useState<string[]>([]);
   const [communityActiveTab, setCommunityActiveTab] = useState<'following' | 'discover'>('following');
   const [viewingCommunity, setViewingCommunity] = useState<CommunityTag | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [lastCanvasClosedSessionId, setLastCanvasClosedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -211,6 +214,26 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to update history', error);
+      const msg = (error instanceof Error && error.message)
+        ? (() => {
+            try {
+              const parsed = JSON.parse(error.message);
+              return parsed.message || parsed.error || error.message;
+            } catch {
+              return error.message;
+            }
+          })()
+        : 'Update failed';
+      if (updates.isPublic !== undefined) {
+        setPublishError(msg);
+        setHistory((prev) =>
+          prev.map((item) =>
+            item.id === id ? { ...item, isPublic: !updates.isPublic } : item
+          )
+        );
+      } else {
+        toast.error(msg);
+      }
     }
   };
 
@@ -309,6 +332,18 @@ export default function App() {
     refreshHistory();
     refreshChatSessions();
   }, [refreshHistory, refreshChatSessions]);
+
+  // Publish error modal: auto-close after 3s
+  useEffect(() => {
+    if (!publishError) return;
+    const t = setTimeout(() => setPublishError(null), 3000);
+    return () => clearTimeout(t);
+  }, [publishError]);
+
+  // Refresh archive list when switching to Archive tab
+  useEffect(() => {
+    if (currentPage === 'archive') refreshHistory();
+  }, [currentPage, refreshHistory]);
 
   return (
     <>
@@ -550,13 +585,21 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative">
-          {currentPage === 'chat' && <ChatPage onHistorySync={handleHistorySync} />}
+          {currentPage === 'chat' && (
+            <ChatPage
+              onHistorySync={handleHistorySync}
+              refreshSavedForSessionId={lastCanvasClosedSessionId}
+              onClearedRefreshSavedTrigger={() => setLastCanvasClosedSessionId(null)}
+            />
+          )}
           {currentPage === 'archive' && (
             <HistoryPage
               onNavigateToCommunity={handleNavigateToCommunity}
               history={history}
               onUpdateHistory={handleUpdateHistory}
               onDeleteHistory={handleDeleteHistory}
+              onRefreshHistory={refreshHistory}
+              onCanvasClosed={setLastCanvasClosedSessionId}
             />
           )}
           {currentPage === 'chat-history' && (
@@ -638,6 +681,18 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Publish error modal: hand-drawn style, auto-closes after 3s */}
+      {publishError && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" aria-modal="true" role="alertdialog">
+          <div className="absolute inset-0 bg-[#1a1a1a]/30" onClick={() => setPublishError(null)} />
+          <div className="relative max-w-md w-full bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-6 hand-drawn-border wireframe-shadow text-center">
+            <p className="font-bold handwritten text-[#1a1a1a] text-lg mb-1">Cannot publish</p>
+            <p className="text-[#1a1a1a]/90 handwritten text-sm">{publishError}</p>
+            <p className="mt-4 text-xs text-[#1a1a1a]/60 handwritten">This message will close in 3 seconds.</p>
+          </div>
+        </div>
+      )}
     </>
   );
 }

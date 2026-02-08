@@ -63,6 +63,18 @@ export default async function handler(req, res) {
         });
       }
 
+      const items = data.content_json?.items || [];
+      const firstTextItem = items.find((i) => i?.type === 'text' && i?.content);
+      const derivedLastMessage = firstTextItem
+        ? String(firstTextItem.content).trim().substring(0, 120)
+        : '';
+      const derivedPreviewImages = Array.isArray(data.preview_images) && data.preview_images.length
+        ? data.preview_images
+        : (() => {
+            const firstImg = items.find((i) => i?.type === 'image' && i?.content);
+            return firstImg ? [firstImg.content] : [];
+          })();
+
       console.log('[history/[id]] GET success:', {
         id: data.id,
         title: data.title,
@@ -75,9 +87,9 @@ export default async function handler(req, res) {
           id: data.id,
           title: data.title,
           messageCount: data.message_count,
-          lastMessage: data.last_message,
+          lastMessage: derivedLastMessage,
           timestamp: data.timestamp,
-          previewImages: data.preview_images || [],
+          previewImages: derivedPreviewImages,
           isPublic: data.is_public,
           tags: filterSystemTags(data.tags || []),
           contentJson: data.content_json,

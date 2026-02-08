@@ -9,22 +9,13 @@ function deriveCoverImage(item) {
   return firstImage?.content || null;
 }
 
-/** 从 canvas 提取第一个文字内容（卡片预览）：优先 items 中的 text，其次 artifacts 的 summary */
+/** 从 canvas 提取第一个文字内容（卡片预览）：仅 items 中第一个 text，无则空（不用 artifact summary） */
 function deriveFirstTextPreview(item) {
   const items = item?.content_json?.items || [];
-  const artifacts = item?.content_json?.artifacts || [];
-  // 1. items 中第一个 type='text' 的 content（可能是 chat message 或 summary）
   const firstTextItem = items.find((i) => i?.type === 'text' && i?.content);
   if (firstTextItem?.content) {
     return String(firstTextItem.content).trim().substring(0, 120);
   }
-  // 2. artifacts 中第一个有 summary 的
-  const firstArtifact = artifacts.find((a) => {
-    const s = a?.data?.summary || a?.payload?.summary;
-    return s && String(s).trim();
-  });
-  const summary = firstArtifact?.data?.summary || firstArtifact?.payload?.summary;
-  if (summary) return String(summary).trim().substring(0, 120);
   return '';
 }
 
@@ -119,14 +110,14 @@ export default async function handler(req, res) {
           .filter(hasArchiveContent)
           .map(item => {
             try {
-              // 卡片预览：优先用 canvas 中第一个文字内容（text item 或 artifact summary），否则用 last_message
+              // 卡片预览：仅用 canvas 中第一个文字/artifact summary，无则空（不 fallback 到 last_message）
               const firstText = deriveFirstTextPreview(item);
               return {
                 id: item.id,
                 sessionId: item.session_id,  // ✅ 关键：返回 sessionId
                 title: item.title || 'Untitled',
                 messageCount: item.message_count || 0,
-                lastMessage: firstText || item.last_message || '',
+                lastMessage: (firstText || '').trim(),
                 previewImages: derivePreviewImages(item),
                 isPublic: item.is_public || false,
                 tags: filterSystemTags(Array.isArray(item.tags) ? item.tags : []),
@@ -266,11 +257,25 @@ async function handleHistoryById(req, res, id) {
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
       if (body.contentJson !== undefined) updates.content_json = body.contentJson;
+      if (body.previewImages !== undefined) updates.preview_images = body.previewImages;
 
       if (body.isPublic === true) {
         const contentForTags = body.contentJson ?? item.content_json ?? {};
+        const items = contentForTags?.items || [];
+        if (!items.length) {
+          return res.status(400).json({
+            error: 'Cannot publish',
+            message: 'Cannot publish: the canvas is empty. Please add some content before publishing.'
+          });
+        }
         const titleForTags = body.title ?? item.title ?? 'Untitled';
-        const canvasText = extractCanvasText(contentForTags, titleForTags);
+        const canvasText = extractCanvasText(contentForTags, titleForTags, false);
+        if (!canvasText || !String(canvasText).trim()) {
+          return res.status(400).json({
+            error: 'Cannot publish',
+            message: 'Cannot publish: the canvas has no text or image/mindmap titles to generate tags and category. Please add some content before publishing.'
+          });
+        }
         publishTags = await generateSemanticTags(canvasText);
         updates.tags = publishTags;
         communityCategoryName = await classifyCommunityCategory(canvasText);

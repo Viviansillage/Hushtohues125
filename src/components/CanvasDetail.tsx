@@ -39,6 +39,8 @@ export interface DraggableItem {
   height: number | string;
   zIndex: number;
   meta?: { title?: string; summary?: string };
+  /** 来自 Chat 保存时写入，删除时用于从 savedMessages 移除 */
+  messageId?: string;
 }
 
 interface CanvasDetailProps {
@@ -181,6 +183,7 @@ const DraggableCanvasItemCard = ({
   handleResizeStop,
   setItems,
   items,
+  onDeleteItem,
 }: {
   item: DraggableItem;
   isPreview: boolean;
@@ -192,12 +195,13 @@ const DraggableCanvasItemCard = ({
   handleResizeStop: (id: string, ref: HTMLElement, d: any) => void;
   setItems: React.Dispatch<React.SetStateAction<DraggableItem[]>>;
   items: DraggableItem[];
+  onDeleteItem?: (item: DraggableItem) => void;
 }) => {
   const dragControls = useDragControls();
   const handleContentPointerDown = (e: React.PointerEvent) => {
     if (isPreview || readOnly) return;
     const target = e.target as HTMLElement;
-    if (target.closest('.react-resizable-handle') || target.closest('textarea')) return;
+    if (target.closest('.react-resizable-handle') || target.closest('textarea') || target.closest('[data-delete-item]')) return;
     dragControls.start(e);
   };
 
@@ -251,6 +255,23 @@ const DraggableCanvasItemCard = ({
       }}
       className="group"
     >
+      {!isPreview && !readOnly && onDeleteItem && (
+        <button
+          type="button"
+          data-delete-item
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteItem(item);
+          }}
+          className="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-[#1a1a1a] text-[#f0ece1] rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 border-2 border-[#f0ece1] -translate-y-1/2 translate-x-1/2 hover:opacity-100"
+          aria-label="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      )}
       <Resizable
         size={{
           width: item.width,
@@ -350,6 +371,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [savedMessages, setSavedMessages] = useState<string[]>(() => item.contentJson?.savedMessages ?? []);
   const containerRef = useRef<HTMLDivElement>(null);
   const savedStateRef = useRef<string>(''); // 用于比较是否有修改
   const scrollRestoreRef = useRef<number | null>(null); // 拖拽时恢复滚动位置（Motion 拖拽会重置 scroll）
@@ -398,13 +420,28 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     setHasUnsavedChanges(currentState !== savedStateRef.current);
   }, [title, items]);
 
-  // 计算需要的最小画布高度（基于所有artifacts数量）
-  const imageCount = item.images?.length || 0;
-  const mindmapCount = item.mindmaps?.length || 0;
-  const totalArtifacts = imageCount + mindmapCount;
-  const calculatedMinHeight = totalArtifacts > 0 
-    ? 160 + (totalArtifacts * 420) + 200  // 起始位置 + (总artifacts数 * 间距) + 底部留白
-    : 2000;  // 默认高度
+  // 计算需要的最小画布高度：按当前 items 遍历取最底端 + 留白（与 append 逻辑一致）
+  const DEFAULT_CANVAS_MIN_HEIGHT = 2000;
+  const BOTTOM_PADDING = 200;
+  const calculatedMinHeight = (() => {
+    if (!items.length) return DEFAULT_CANVAS_MIN_HEIGHT;
+    let maxBottom = 0;
+    for (const it of items) {
+      let h: number;
+      if (typeof it.height === 'number' && it.height > 0) {
+        h = it.height;
+      } else if (it.height === 'auto' || it.height === undefined) {
+        h = 120; // fallback for text or missing
+      } else if (typeof it.height === 'string' && /^\d+$/.test(it.height)) {
+        h = parseInt(it.height, 10) || 120;
+      } else {
+        h = it.type === 'image' || it.type === 'mindmap' ? 300 : 120;
+      }
+      const bottom = (typeof it.y === 'number' ? it.y : 0) + h;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    return maxBottom + BOTTOM_PADDING;
+  })();
 
   const bringToFront = (id: string) => {
     if (readOnly && isPreview) return;
@@ -423,6 +460,14 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         height: item.type === 'text' ? 'auto' : ref.style.height, // Text height is auto
       };
     }));
+  };
+
+  const handleDeleteItem = (deletedItem: DraggableItem) => {
+    setItems(prev => prev.filter(i => i.id !== deletedItem.id));
+    if (deletedItem.messageId != null && String(deletedItem.messageId).trim()) {
+      setSavedMessages(prev => prev.filter(id => id !== deletedItem.messageId));
+    }
+    setHasUnsavedChanges(true);
   };
 
   const handleLike = () => {
@@ -498,23 +543,30 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
           savedMessages: currentContentJson.savedMessages
         });
         
+        const currentSaved = savedMessages ?? currentContentJson.savedMessages ?? [];
         const updatedContentJson = {
-          ...currentContentJson,  // ← 保留现有字段（savedMessages, artifacts等）
+          ...currentContentJson,
           title,
           items: itemsWithRealHeights,
+          savedMessages: currentSaved,
           timestamp: new Date().toISOString()
         };
+        const previewImages = itemsWithRealHeights
+          .filter((i): i is DraggableItem & { type: 'image' } => i.type === 'image')
+          .map(i => i.content)
+          .filter(Boolean);
         
         console.log('[Canvas Save] Updated contentJson:', {
           hasSavedMessages: !!updatedContentJson.savedMessages,
           savedMessagesCount: updatedContentJson.savedMessages?.length || 0,
-          savedMessages: updatedContentJson.savedMessages,
-          itemsCount: updatedContentJson.items.length
+          itemsCount: updatedContentJson.items.length,
+          previewImagesCount: previewImages.length
         });
         
         await updateHistoryItem(item.id, {
           title,
-          contentJson: updatedContentJson
+          contentJson: updatedContentJson,
+          previewImages
         });
         toast.success('Canvas saved!', { className: 'handwritten font-bold' });
       } catch (error) {
@@ -950,6 +1002,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
             handleResizeStop={handleResizeStop}
             setItems={setItems}
             items={items}
+            onDeleteItem={readOnly ? undefined : handleDeleteItem}
           />
         ))}
         

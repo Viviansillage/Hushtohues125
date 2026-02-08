@@ -408,10 +408,6 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   const bringToFront = (id: string) => {
     if (readOnly && isPreview) return;
-    // #region agent log
-    const scrollBefore = containerRef.current?.scrollTop ?? -1;
-    fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CanvasDetail.tsx:bringToFront',message:'A: bringToFront called',data:{id,scrollTop:scrollBefore},hypothesisId:'A',timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setItems(prev => {
       const maxZ = Math.max(...prev.map(i => i.zIndex), 0);
       return prev.map(item => item.id === id ? { ...item, zIndex: maxZ + 1 } : item);
@@ -911,17 +907,11 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
         className={`flex-1 relative overflow-y-auto overflow-x-hidden ${isPreview || readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
         style={{ height: 'calc(100vh - 80px)', overflowAnchor: 'none' }}
         onDoubleClick={(!isPreview && !readOnly) ? handleCanvasDoubleClick : undefined}
-        onPointerDownCapture={(e) => {
+        onPointerDownCapture={() => {
           const el = containerRef.current;
           if (el && !isPreview && !readOnly) {
             scrollBeforePointerRef.current = el.scrollTop;
           }
-          // #region agent log
-          if (el) {
-            const st = el.scrollTop;
-            fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CanvasDetail.tsx:pointerDownCapture',message:'C: scroll at pointerDown (before motion)',data:{scrollTop:st,targetTag:(e.target as HTMLElement)?.tagName},hypothesisId:'C',timestamp:Date.now()})}).catch(()=>{});
-          }
-          // #endregion
         }}
       >
         {/* 内层容器：提供足够高度触发滚动 */}

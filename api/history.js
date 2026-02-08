@@ -1,4 +1,4 @@
-import { getHistory, getActor, supabase, extractCanvasText, filterSystemTags, generateSemanticTags, hasLegacySystemTags } from './supabase.js';
+import { getHistory, getActor, supabase, extractCanvasText, filterSystemTags, generateSemanticTags } from './supabase.js';
 
 async function parseBody(req) {
   return new Promise((resolve) => {
@@ -76,8 +76,9 @@ export default async function handler(req, res) {
           const artifacts = item?.content_json?.artifacts;
           const hasItems = Array.isArray(items) && items.length > 0;
           const hasArtifacts = Array.isArray(artifacts) && artifacts.length > 0;
-          const tags = Array.isArray(item?.tags) ? item.tags : [];
-          return hasItems || hasArtifacts || hasLegacySystemTags(tags);
+          // 只展示有 items 或 artifacts 的 canvas；移除 hasLegacySystemTags，
+          // 避免老记录（仅有 content/messages、无 items）被当作 canvas 展示
+          return hasItems || hasArtifacts;
         };
 
         // 健壮地解析每条记录，跳过坏数据

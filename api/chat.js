@@ -192,6 +192,12 @@ Your task:
    - Level 3: 4 spaces
    - Level 4: 6 spaces
 
+5. **Nodes must contain only plain text**:
+   - Replace apostrophes ' with ’  
+   - Avoid parentheses in node text
+
+6. **Output only valid mermaid code, no explanations**
+
 **JSON Syntax Rules:** Escape double quotes in strings with \\", use commas between all properties, no trailing commas.
 
 Output STRICT JSON ONLY:
@@ -779,8 +785,40 @@ function validateAndSanitizeMermaidCode(mermaidCode, title = 'Diagram') {
   return trimmed.replace(/P\.\s*S\./gi, 'PS');
 }
 
+
+// 提取 JSON 片段或原文
+function extractJsonLike(text = "") {
+  const cleaned = text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const firstObj = cleaned.indexOf("{");
+  const lastObj = cleaned.lastIndexOf("}");
+  const firstArr = cleaned.indexOf("[");
+  const lastArr = cleaned.lastIndexOf("]");
+  if (firstObj !== -1 && lastObj !== -1 && lastObj > firstObj) {
+    return cleaned.slice(firstObj, lastObj + 1);
+  }
+  if (firstArr !== -1 && lastArr !== -1 && lastArr > firstArr) {
+    return cleaned.slice(firstArr, lastArr + 1);
+  }
+  return cleaned;
+}
+
+// 容错 JSON 解析
+function safeParseJson(text) {
+  const candidate = extractJsonLike(text);
+  try {
+    return { ok: true, data: JSON.parse(candidate), raw: text };
+  } catch (e) {
+    return { ok: false, error: String(e), raw: text, candidate };
+  }
+}
+
 /**
- * 安全解析 Gemini JSON
+ * 安全解析 Gemini JSON，parse 失败时降级为普通文本
  */
 function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
   // #region agent log (Vercel console - copy this line to debug)
@@ -788,45 +826,32 @@ function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
   const _lastBrace = text.trim().lastIndexOf('}');
   console.log('[ChatDebug] safeParseGeminiJson entry', JSON.stringify({ textLength: text?.length ?? 0, firstBrace: _firstBrace, lastBrace: _lastBrace, hasValidBraces: _firstBrace !== -1 && _lastBrace !== -1 }));
   // #endregion
-  try {
-    let cleaned = text.trim();
-    if (cleaned.startsWith('```json')) {
-      cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  const parsed = safeParseJson(text);
+  if (parsed.ok && typeof parsed.data === 'object' && parsed.data !== null) {
+    const obj = parsed.data;
+    if (!obj.reply && !obj.title) {
+      obj.reply = 'Got your idea!';
     }
-
-    // 提取第一个 { 到最后一个 }
-    const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-    }
-
-    const parsed = JSON.parse(cleaned);
-
-    // 验证必需字段
-    if (!parsed.reply && !parsed.title) {
-      parsed.reply = 'Got your idea!';
-    }
-    if (!parsed.title) parsed.title = fallbackTitle;
-    if (!parsed.summary) parsed.summary = parsed.reply || 'An interesting concept.';
-    if (!Array.isArray(parsed.tags)) parsed.tags = [];
-    if (!parsed.mindmap) {
-      parsed.mindmap = {
-        root: parsed.title,
-        branches: [{ label: 'Key Points', children: [parsed.summary] }]
+    if (!obj.title) obj.title = fallbackTitle;
+    if (!obj.summary) obj.summary = obj.reply || 'An interesting concept.';
+    if (!Array.isArray(obj.tags)) obj.tags = [];
+    if (!obj.mindmap) {
+      obj.mindmap = {
+        root: obj.title,
+        branches: [{ label: 'Key Points', children: [obj.summary] }]
       };
     }
-
-    return parsed;
-  } catch (error) {
+    return obj;
+  } else {
     // #region agent log (Vercel console - copy this line to debug)
-    console.log('[ChatDebug] safeParseGeminiJson PARSE FAILED (fallback used)', JSON.stringify({ errorMessage: error?.message ?? '', textLength: text?.length ?? 0 }));
+    console.log('[ChatDebug] safeParseGeminiJson PARSE FAILED (fallback used)', JSON.stringify({ errorMessage: parsed.error ?? '', textLength: text?.length ?? 0 }));
     // #endregion
-    console.error('Failed to parse Gemini JSON:', error);
+    console.error('Failed to parse Gemini JSON:', parsed.error);
+    // 降级为普通文本
     const fallbackReply =
-      'Sorry, the response was cut off or invalid. Please try a shorter question or try again. 回复被截断或格式异常，请缩短问题后重试。';
+      typeof text === 'string' && text.length < 300
+        ? text
+        : 'Sorry, the response was cut off or invalid. Please try a shorter question or try again. 回复被截断或格式异常，请缩短问题后重试。';
     return {
       reply: fallbackReply,
       title: fallbackTitle,

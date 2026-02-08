@@ -464,7 +464,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   const handleDeleteItem = (deletedItem: DraggableItem) => {
     setItems(prev => prev.filter(i => i.id !== deletedItem.id));
-    if (deletedItem.messageId != null && String(deletedItem.messageId).trim()) {
+    // 只有删除 image/mindmap 时才从 savedMessages 移除；删除 text/summary 只从 items 移除，不影响 Chat 的 saved 状态
+    if ((deletedItem.type === 'image' || deletedItem.type === 'mindmap') && deletedItem.messageId != null && String(deletedItem.messageId).trim()) {
       setSavedMessages(prev => prev.filter(id => id !== deletedItem.messageId));
     }
     setHasUnsavedChanges(true);

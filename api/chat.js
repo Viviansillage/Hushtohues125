@@ -303,7 +303,7 @@ async function detectAvailableImageModels() {
       hasImagen: imagenModels.length > 0,
       hasGeminiFlash: geminiFlashModels.length > 0,
       imagenModel: imagenModels[0] || null,
-      geminiFlashModel: geminiFlashModels[0] || 'gemini-2.5-flash-image',
+      geminiFlashModel: geminiFlashModels[0] || 'gemini-3-pro-image-preview',
       models: modelNames,
       allModels: allImageModels
     };
@@ -337,7 +337,7 @@ async function callGeminiFlashImage(prompt) {
     const startTime = Date.now();
     
     const apiKey = process.env.GEMINI_API_KEY;
-    const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
+    const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
     console.log('[GeminiFlash] ======================================== REQUEST START');
@@ -632,7 +632,8 @@ async function callGemini(messages, userText, customPrompt = null) {
     }
   };
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const textModel = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${textModel}:generateContent?key=${apiKey}`;
 
   console.log('[callGemini] Calling Gemini API...');
 
@@ -712,7 +713,8 @@ Title (phrase/topic only, no quotes):`;
 
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });  // 使用稳定模型
+    const textModel = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
+    const model = genAI.getGenerativeModel({ model: textModel });
     
     const result = await model.generateContent(titlePrompt);
     let title = result.response.text().trim();
@@ -1305,7 +1307,8 @@ export default async function handler(req, res) {
             console.log(`[${requestId}] [Step 1/5] Generating image prompt via Gemini...`);
             const { GoogleGenerativeAI } = await import('@google/generative-ai');
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const textModel = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
+            const model = genAI.getGenerativeModel({ model: textModel });
             
             const conversationText = messages.map(m => `${m.sender}: ${m.text}`).join('\n');
             const imagePromptResponse = await model.generateContent(
@@ -1350,7 +1353,7 @@ export default async function handler(req, res) {
               console.log(`[${requestId}] Using Gemini 2.5 Flash Image...`);
               imageUrl = await callGeminiFlashImage(imageData.imagePrompt);
               usedProvider = 'google-gemini';
-              usedModel = 'gemini-2.5-flash-image';
+              usedModel = process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview';
               console.log(`[${requestId}] Gemini Flash Image generated successfully`);
             } else if (detectionResult.hasImagen) {
               console.log(`[${requestId}] Fallback to Imagen 4...`);

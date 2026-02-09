@@ -150,7 +150,8 @@ export const generateSemanticTags = async (text) => {
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const textModel = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
+    const model = genAI.getGenerativeModel({ model: textModel });
 
     const prompt = `You generate concise semantic tags for the given text.
 Return ONLY JSON in the format: {"tags":["tag-one","tag-two","tag-three"]}.
@@ -231,7 +232,8 @@ export const classifyCommunityCategory = async (text) => {
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const textModel = process.env.GEMINI_TEXT_MODEL || 'gemini-3-pro-preview';
+    const model = genAI.getGenerativeModel({ model: textModel });
 
     const fullPrompt = `${COMMUNITY_CLASSIFICATION_PROMPT}
 

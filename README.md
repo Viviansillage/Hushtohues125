@@ -7,7 +7,7 @@ Turns raw thoughts (text or voice) into structured outputs: Mermaid diagrams (mi
 ## Demo
 
 - **Live App:** [https://hushtohues.vercel.app](https://hushtohues.vercel.app)
-- **Demo Video:** [https://example.com/demo-video](https://example.com/demo-video) *(placeholder)*
+- **Demo Video:** [https://youtu.be/kaT2cOuxtdM](https://youtu.be/kaT2cOuxtdM)
 
 ---
 

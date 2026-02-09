@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Vercel 会自动注入环境变量
+// Vercel auto-injects environment variables
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -258,24 +258,24 @@ JSON:`;
 };
 
 /**
- * 上传图片到 Supabase Storage
- * @param {string} base64Data - Base64 编码的图片数据（不含 data:image/... 前缀）
- * @param {string} mimeType - 图片 MIME 类型（如 image/png）
- * @param {object} metadata - 元数据 {prompt, sessionId, actor}
+ * Upload image to Supabase Storage
+ * @param {string} base64Data - Base64-encoded image (no data:image/... prefix)
+ * @param {string} mimeType - Image MIME type (e.g. image/png)
+ * @param {object} metadata - Metadata {prompt, sessionId, actor}
  * @returns {Promise<{publicUrl: string, storagePath: string}>}
  */
 export async function uploadImageToStorage(base64Data, mimeType = 'image/png', metadata = {}) {
   try {
-    // 1. 将 base64 转为 Buffer
+    // 1. Convert base64 to Buffer
     const buffer = Buffer.from(base64Data, 'base64');
     
-    // 2. 生成唯一文件名
+    // 2. Generate unique filename
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 9);
     const ext = mimeType.split('/')[1] || 'png';
     const fileName = `${timestamp}-${random}.${ext}`;
     
-    // 3. 构建存储路径（按日期分组）
+    // 3. Build storage path (grouped by date)
     const date = new Date();
     const dateFolder = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}`;
     const storagePath = `artifacts/${dateFolder}/${fileName}`;
@@ -287,13 +287,13 @@ export async function uploadImageToStorage(base64Data, mimeType = 'image/png', m
       metadata: Object.keys(metadata)
     });
     
-    // 4. 上传到 Supabase Storage
+    // 4. Upload to Supabase Storage
     const { data, error } = await supabase.storage
-      .from('artifacts')  // bucket 名称
+      .from('artifacts')  // bucket name
       .upload(storagePath, buffer, {
         contentType: mimeType,
         cacheControl: '3600',
-        upsert: false,  // 不覆盖已存在文件
+        upsert: false,  // Do not overwrite existing files
         metadata: {
           prompt: metadata.prompt?.substring(0, 500) || '',
           sessionId: metadata.sessionId || '',
@@ -308,7 +308,7 @@ export async function uploadImageToStorage(base64Data, mimeType = 'image/png', m
       throw new Error(`Storage upload failed: ${error.message}`);
     }
     
-    // 5. 获取公开访问 URL
+    // 5. Get public URL
     const { data: { publicUrl } } = supabase.storage
       .from('artifacts')
       .getPublicUrl(storagePath);
@@ -330,23 +330,22 @@ export async function uploadImageToStorage(base64Data, mimeType = 'image/png', m
 let defaultProfileId = null;
 
 /**
- * 从请求中解析 actor（用户或访客）
- * @param {Request} req - HTTP 请求对象
- * @param {object} options - 配置选项
- * @param {boolean} options.requireGuestId - 是否强制要求 guest_id（写操作应设为 true）
- * @returns {{ type: 'user' | 'guest', id: string | null, name: string, error?: string }} actor 对象
+ * Parse actor (user or guest) from request
+ * @param {Request} req - HTTP request object
+ * @param {object} options - Options
+ * @param {boolean} options.requireGuestId - Require guest_id (true for write operations)
+ * @returns {{ type: 'user' | 'guest', id: string | null, name: string, error?: string }}
  */
 export function getActor(req, options = {}) {
   const { requireGuestId = false } = options;
   
-  // 优先检查是否有已登录用户（未来扩展 Supabase Auth）
+  // Prefer logged-in user (future Supabase Auth extension)
   // const userId = req.headers['x-user-id'];
   // if (userId) {
   //   return { type: 'user', id: userId };
   // }
   
-  // 从 header 读取 guest_id（统一使用小写）
-  // Vercel 可能将 header 转为数组，需要处理
+  // Read guest_id from header (lowercase); Vercel may convert header to array
   let guestId = req.headers['x-guest-id'];
   if (Array.isArray(guestId)) {
     guestId = guestId[0];
@@ -356,7 +355,7 @@ export function getActor(req, options = {}) {
     return { type: 'guest', id: guestId, name: `Guest-${guestId.slice(-6)}` };
   }
   
-  // ✅ 关键修复：对于写操作，禁止生成临时 guest ID
+  // For write operations, do not generate temp guest ID
   if (requireGuestId) {
     console.error('[getActor] Missing required X-Guest-ID header for write operation');
     return { 
@@ -367,7 +366,7 @@ export function getActor(req, options = {}) {
     };
   }
   
-  // ✅ 对于只读操作，允许匿名但不生成新 ID
+  // For read-only, allow anonymous but do not generate new ID
   console.warn('[getActor] No X-Guest-ID header, returning anonymous actor');
   return { type: 'guest', id: null, name: 'Anonymous' };
 }
@@ -458,7 +457,7 @@ export async function getCommunityPosts() {
   return (data || []).map(post => ({
     id: post.id,
     title: post.title,
-    author: { name: post.author_name || 'Anonymous' }, // 修复：转换为对象
+    author: { name: post.author_name || 'Anonymous' },
     imageUrl: post.image_url,
     content: post.content,
     likes: post.likes || 0,
@@ -472,7 +471,7 @@ export async function getCommunityMeta(req = null) {
   const actor = req ? getActor(req) : { type: 'guest', id: 'default' };
 
   try {
-    // 查询所有社区标签
+    // Query all community tags
     const { data: allTags, error: tagsError } = await supabase
       .from('community_tags')
       .select('*')
@@ -480,7 +479,7 @@ export async function getCommunityMeta(req = null) {
 
     if (tagsError) throw tagsError;
 
-    // 拉取公开帖子，用于计算各分区的 totalPosts、postsToday、trending（真实数据）
+    // Fetch public posts for totalPosts, postsToday, trending per partition
     const { data: postsRows } = await supabase
       .from('community_posts')
       .select('community_tag_id, tags, created_at')
@@ -507,7 +506,7 @@ export async function getCommunityMeta(req = null) {
       });
     });
 
-    // 每个分区取 top 5 标签作为 trending（带 #，与前端展示一致）
+    // Top 5 tags per partition as trending (with #, matches frontend)
     Object.keys(statsByTagId).forEach((tagId) => {
       const tagCounts = statsByTagId[tagId].tagCounts;
       statsByTagId[tagId].trending = Object.entries(tagCounts)
@@ -533,7 +532,7 @@ export async function getCommunityMeta(req = null) {
       };
     };
 
-    // 查询用户关注的社区（支持 guest）
+    // Query user followed communities (supports guest)
     const { data: followedData, error: followedError } = await supabase
       .from('user_followed_communities')
       .select('community_tags(*)')
@@ -542,7 +541,7 @@ export async function getCommunityMeta(req = null) {
     
     if (followedError) throw followedError;
     
-    // 查询用户点赞（支持 guest）
+    // Query user likes (supports guest)
     const { data: likesData, error: likesError } = await supabase
       .from('user_likes')
       .select('target_id')
@@ -551,7 +550,7 @@ export async function getCommunityMeta(req = null) {
     
     if (likesError) throw likesError;
     
-    // 查询用户收藏（仍使用 profile_id，guest 暂不支持）
+    // Query user bookmarks (profile_id; guest not supported yet)
     const profileId = await getOrCreateDefaultProfile();
     const { data: bookmarksData, error: bookmarksError } = await supabase
       .from('user_bookmarks')
@@ -560,12 +559,12 @@ export async function getCommunityMeta(req = null) {
     
     if (bookmarksError) throw bookmarksError;
     
-    // 构造所有社区数据
+    // Build community data
     const formattedTags = (allTags || [])
       .map(tag => ensureTagStructure(tag, tag.name))
       .filter(Boolean);
     
-    // 获取用户关注的社区
+    // Get user followed communities
     const followed = (followedData || [])
       .map(item => ensureTagStructure(item.community_tags, item.community_tags?.name))
       .filter(Boolean);
@@ -586,12 +585,12 @@ export async function getCommunityMeta(req = null) {
         likes: (likesData || []).map(l => l.target_id),
         bookmarks: (bookmarksData || []).map(b => b.post_id),
         followedCommunities: followedNames,
-        joinedCommunities: followedNames  // 同义词
+        joinedCommunities: followedNames
       }
     };
   } catch (error) {
     console.error('getCommunityMeta error:', error);
-    // 返回空数据而不是抛出错误，避免前端崩溃
+    // Return empty data instead of throwing to avoid frontend crash
     return {
       followed: [],
       recommended: [],
@@ -612,7 +611,7 @@ export async function getCommunityMeta(req = null) {
  */
 export async function followCommunity(communityName, actor) {
   try {
-    // 1. 查找或创建 community_tag
+    // 1. Find or create community_tag
     let { data: tag, error: tagError } = await supabase
       .from('community_tags')
       .select('id, name, member_count')
@@ -622,7 +621,7 @@ export async function followCommunity(communityName, actor) {
     if (tagError && tagError.code !== 'PGRST116') throw tagError;
     
     if (!tag) {
-      // 创建新 tag
+      // Create new tag
       const { data: newTag, error: createError } = await supabase
         .from('community_tags')
         .insert({ name: communityName, member_count: 1 })
@@ -633,7 +632,7 @@ export async function followCommunity(communityName, actor) {
       tag = newTag;
     }
     
-    // 2. 检查是否已关注（幂等性）
+    // 2. Check if already followed (idempotent)
     const { data: existing, error: checkError } = await supabase
       .from('user_followed_communities')
       .select('id')
@@ -645,7 +644,7 @@ export async function followCommunity(communityName, actor) {
     if (checkError && checkError.code !== 'PGRST116') throw checkError;
     
     if (!existing) {
-      // 3. 插入关注记录
+      // 3. Insert follow record
       const { error: insertError } = await supabase
         .from('user_followed_communities')
         .insert({
@@ -660,7 +659,7 @@ export async function followCommunity(communityName, actor) {
         throw insertError;
       }
       
-      // 4. 更新 member_count
+      // 4. Update member_count
       await supabase
         .from('community_tags')
         .update({ member_count: (tag.member_count || 0) + 1 })
@@ -681,7 +680,7 @@ export async function followCommunity(communityName, actor) {
  */
 export async function unfollowCommunity(communityName, actor) {
   try {
-    // 1. 查找 community_tag
+    // 1. Find community_tag
     const { data: tag, error: tagError } = await supabase
       .from('community_tags')
       .select('id, member_count')
@@ -689,9 +688,9 @@ export async function unfollowCommunity(communityName, actor) {
       .maybeSingle();
     
     if (tagError && tagError.code !== 'PGRST116') throw tagError;
-    if (!tag) return false;  // Tag 不存在，已经是未关注状态
+    if (!tag) return false;  // Tag not found, already unfollowed
     
-    // 2. 删除关注记录
+    // 2. Delete follow record
     const { error: deleteError } = await supabase
       .from('user_followed_communities')
       .delete()
@@ -701,7 +700,7 @@ export async function unfollowCommunity(communityName, actor) {
     
     if (deleteError) throw deleteError;
     
-    // 3. 更新 member_count
+    // 3. Update member_count
     if (tag.member_count > 0) {
       await supabase
         .from('community_tags')
@@ -745,14 +744,14 @@ export async function updateProfile(updates) {
 }
 
 /**
- * 保存消息到数据库
- * @param {string} sessionId - 会话ID
- * @param {object} message - 消息对象 { id, text, sender, timestamp }
- * @param {object} actor - 用户对象 { type, id }
+ * Save message to database
+ * @param {string} sessionId - Session ID
+ * @param {object} message - Message { id, text, sender, timestamp }
+ * @param {object} actor - Actor { type, id }
  */
 export async function saveMessage(sessionId, message, actor) {
   try {
-    // 1. 确保chat_session存在
+    // 1. Ensure chat_session exists
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('*')
@@ -762,13 +761,13 @@ export async function saveMessage(sessionId, message, actor) {
     if (sessionError) throw sessionError;
     
     if (!session) {
-      // 为新session生成标题（使用第一条用户消息的前50个字符）
+      // Generate title from first user message (first 50 chars)
       let title = 'New Chat';
       if (message.sender === 'user' && message.text) {
         title = message.text.substring(0, 50) + (message.text.length > 50 ? '...' : '');
       }
       
-      // 创建新session
+      // Create new session
       const { error: createError } = await supabase
         .from('chat_sessions')
         .insert({
@@ -782,7 +781,7 @@ export async function saveMessage(sessionId, message, actor) {
       
       if (createError) throw createError;
     } else if (!session.title || session.title === 'New Chat') {
-      // 如果session已存在但标题是默认的，用第一条用户消息更新标题
+      // If session exists but title is default, update with first user message
       if (message.sender === 'user' && message.text) {
         const title = message.text.substring(0, 50) + (message.text.length > 50 ? '...' : '');
         await supabase
@@ -792,7 +791,7 @@ export async function saveMessage(sessionId, message, actor) {
       }
     }
     
-    // 2. 插入消息
+    // 2. Insert message
     const { error: msgError } = await supabase
       .from('chat_messages')
       .insert({
@@ -807,8 +806,7 @@ export async function saveMessage(sessionId, message, actor) {
       throw msgError;
     }
     
-    // 3. 更新session的message_count和last_message_at
-    // 先获取当前消息数量
+    // 3. Update session message_count and last_message_at
     const { data: currentSession } = await supabase
       .from('chat_sessions')
       .select('message_count')
@@ -838,14 +836,14 @@ export async function saveMessage(sessionId, message, actor) {
 }
 
 /**
- * 批量保存消息（用于初始化或同步）
- * @param {string} sessionId - 会话ID
- * @param {Array} messages - 消息数组
- * @param {object} actor - 用户对象
+ * Batch save messages (for init or sync)
+ * @param {string} sessionId - Session ID
+ * @param {Array} messages - Messages array
+ * @param {object} actor - Actor { type, id }
  */
 export async function saveMessages(sessionId, messages, actor) {
   try {
-    // 1. 确保session存在
+    // 1. Ensure session exists
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('*')
@@ -868,7 +866,7 @@ export async function saveMessages(sessionId, messages, actor) {
       if (createError) throw createError;
     }
     
-    // 2. 批量插入消息（忽略重复）
+    // 2. Batch insert messages (ignore duplicates)
     const messagesToInsert = messages.map(msg => ({
       session_id: sessionId,
       message_id: msg.id,
@@ -886,7 +884,7 @@ export async function saveMessages(sessionId, messages, actor) {
     
     if (insertError) throw insertError;
     
-    // 3. 更新session
+    // 3. Update session
     const { error: updateError } = await supabase
       .from('chat_sessions')
       .update({
@@ -908,9 +906,9 @@ export async function saveMessages(sessionId, messages, actor) {
 }
 
 /**
- * 获取用户的所有聊天会话列表
+ * Get all chat sessions for user
  * @param {object} actor - { type: 'user'|'guest', id: string }
- * @returns {Promise<Array>} 会话数组
+ * @returns {Promise<Array>} Sessions array
  */
 export async function getChatSessions(actor) {
   try {
@@ -923,9 +921,8 @@ export async function getChatSessions(actor) {
     
     if (error) throw error;
     
-    // 为每个会话获取第一条消息作为预览
+    // Get first message per session as preview
     const sessions = await Promise.all((data || []).map(async (session) => {
-      // 获取第一条消息作为预览
       const { data: messages } = await supabase
         .from('chat_messages')
         .select('text')
@@ -955,9 +952,9 @@ export async function getChatSessions(actor) {
 }
 
 /**
- * 从数据库获取会话的所有消息
- * @param {string} sessionId - 会话ID
- * @returns {Promise<Array>} 消息数组
+ * Get all messages for a session from DB
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<Array>} Messages array
  */
 export async function getMessages(sessionId) {
   try {
@@ -986,8 +983,8 @@ export async function getMessages(sessionId) {
 }
 
 /**
- * 保存artifact到数据库
- * @param {string} sessionId - 会话ID
+ * Save artifact to database
+ * @param {string} sessionId - Session ID
  * @param {object} artifact - { type, prompt, storagePath, publicUrl, provider, model, metadata }
  */
 export async function saveArtifact(sessionId, artifact) {
@@ -1025,9 +1022,9 @@ export async function saveArtifact(sessionId, artifact) {
 }
 
 /**
- * 获取会话的所有artifacts
- * @param {string} sessionId - 会话ID
- * @returns {Promise<Array>} artifacts数组
+ * Get all artifacts for a session
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<Array>} Artifacts array
  */
 export async function getArtifacts(sessionId) {
   try {

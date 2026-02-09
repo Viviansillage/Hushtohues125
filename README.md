@@ -16,7 +16,7 @@ Turns raw thoughts (text or voice) into structured outputs: Mermaid diagrams (mi
 - **Chat-based input** — Conversational interface for thought capture; optional voice input.
 - **AI analysis** — Gemini parses and clarifies user input, returning structured JSON (reply, title, summary, tags, follow-up questions, mindmap skeleton).
 - **Diagram generation** — Mermaid diagrams (mind map, flowchart, or graph) from conversation; diagram type chosen by the model from content structure (hierarchical → mindmap, relational → graph, process → flowchart).
-- **Image generation** — Images generated from conversation context via Gemini image models (e.g. `gemini-2.5-flash-image`); prompt is first produced by a text model.
+- **Image generation** — Images generated from conversation context via Gemini image models (e.g. `gemini-3-pro-image-preview`); prompt is first produced by a text model.
 - **Archive system** — Save artifacts (diagram + image + metadata) per session; append-only updates per session; list/load by session or ID.
 - **Community sharing** — Publish sessions as posts; discover feed; like, bookmark, follow communities; guest users can publish with `X-Guest-ID`.
 - **Guest mode** — Use without auth via `X-Guest-ID` header; guest data can be marked demo and given an expiry (e.g. 7 days for history, 60 days for demo flag).
@@ -25,12 +25,21 @@ Turns raw thoughts (text or voice) into structured outputs: Mermaid diagrams (mi
 
 ## Gemini Integration
 
+### Features using Gemini API
+
+| Feature | Description | Model | Location |
+|---------|-------------|-------|----------|
+| **Process conversations and extract logic** | Parse user input, clarify meaning, return structured JSON (reply, title, summary, tags, mindmap skeleton) | `gemini-3-pro-preview` | `api/chat.js` → `callGemini` |
+| **Generate images and diagrams** | Create Mermaid diagrams (mindmap/graph/flowchart) and AI images from conversation context | Diagram: `gemini-3-pro-preview`; Image: `gemini-3-pro-image-preview` | `api/chat.js` → `callGemini`, `callGeminiFlashImage` |
+| **Auto-extract tags from canvas text** | Suggest semantic tags when saving/editing canvas content | `gemini-3-pro-preview` | `api/supabase.js` → `generateSemanticTags` |
+| **Intelligently classify content into communities** | Assign canvas content to one of 7 fixed community categories when publishing | `gemini-3-pro-preview` | `api/supabase.js` → `classifyCommunityCategory` |
+
 ### Models
 
 | Use case | Model | Notes |
 |----------|--------|------|
-| Chat, title generation, tagging, image-prompt generation | `gemini-2.5-flash` | Via `generateContent` (REST) or `@google/generative-ai` SDK |
-| Image generation | `gemini-2.5-flash-image` (default) | Overridable with `GEMINI_IMAGE_MODEL`; falls back to model detection when unavailable |
+| Chat, title generation, tagging, image-prompt generation | `gemini-3-pro-preview` (default) | Via `generateContent` (REST) or `@google/generative-ai` SDK; overridable with `GEMINI_TEXT_MODEL` |
+| Image generation | `gemini-3-pro-image-preview` (default) | Overridable with `GEMINI_IMAGE_MODEL`; falls back to model detection when unavailable |
 
 Image generation uses the Gemini Developer API (generativelanguage.googleapis.com). Imagen (`imagen-*`) is not used here (Vertex-only).
 
@@ -38,8 +47,8 @@ Image generation uses the Gemini Developer API (generativelanguage.googleapis.co
 
 - **Chat:** `api/chat.js` builds a message list, sends it to Gemini with a system prompt that enforces a **strict JSON schema** (reply, title, summary, tags, followUpQuestions, mindmap with root/branches/relations). Response is parsed with `safeParseGeminiJson()` (extract first `{...}`, fallback title on parse failure).
 - **Diagram:** A second Gemini call with `MINDMAP_PROMPT` takes the structured understanding and returns JSON with `diagramType` (`mindmap` | `graph` | `flowchart`), `title`, `summary`, `mermaidCode`. Mermaid is rendered in the frontend.
-- **Image:** An `IMAGE_PROMPT` call returns JSON with `imagePrompt` (and title/summary); that prompt is sent to `callGeminiFlashImage()` (REST to `gemini-2.5-flash-image` or env model) which returns inline base64 image data.
-- **Tagging:** `api/supabase.js` uses `gemini-2.5-flash` for tag suggestions.
+- **Image:** An `IMAGE_PROMPT` call returns JSON with `imagePrompt` (and title/summary); that prompt is sent to `callGeminiFlashImage()` (REST to `gemini-3-pro-image-preview` or env model) which returns inline base64 image data.
+- **Tagging:** `api/supabase.js` uses `gemini-3-pro-preview` for tag suggestions.
 
 ### Error handling and retries
 
@@ -135,7 +144,7 @@ Create `.env.local` in the project root (see `.env.example` if present). Require
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (serverless) |
 | `GEMINI_API_KEY` | Gemini API key (chat, diagram, image, tagging) |
 
-Optional: `GEMINI_IMAGE_MODEL` — override image model (default `gemini-2.5-flash-image`).
+Optional: `GEMINI_TEXT_MODEL` — override text model (default `gemini-3-pro-preview`). `GEMINI_IMAGE_MODEL` — override image model (default `gemini-3-pro-image-preview`).
 
 ### Install and run
 

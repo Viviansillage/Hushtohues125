@@ -1,14 +1,14 @@
 -- ========================================
--- 社区分区迁移：旧 5 个标签 → 新 7 个分区
+-- Community categories migration: old 5 tags → new 7 categories
 -- ========================================
--- 适用：seed 已跑过，数据库中已有旧的 community_tags。
--- 效果：删除旧标签，插入 7 个新分区；已有帖子的 community_tag_id 会变为 NULL（由 ON DELETE SET NULL 保证）。
+-- Prerequisite: seed.sql has already run and old community_tags exist.
+-- Effect: delete old tags, insert 7 new categories; existing posts will have community_tag_id set to NULL (via ON DELETE SET NULL).
 -- ========================================
 
--- 1. 删除旧社区标签（会 CASCADE 删除 user_followed_communities 中对应关注，并把 community_posts.community_tag_id 置为 NULL）
+-- 1. Delete old community tags (will CASCADE delete related rows in user_followed_communities, and set community_posts.community_tag_id to NULL)
 DELETE FROM community_tags;
 
--- 2. 插入 7 个新分区
+-- 2. Insert 7 new categories
 INSERT INTO community_tags (name, icon, color, member_count, total_posts)
 VALUES
   ('Entertainment', '🎬', '#E74C3C', 0, 0),
@@ -19,7 +19,7 @@ VALUES
   ('Lifestyle', '🏠', '#2ECC71', 0, 0),
   ('Business', '📈', '#34495E', 0, 0);
 
--- 完成
+-- Done
 SELECT
   'Community categories migrated to 7 partitions.' AS status,
   (SELECT COUNT(*) FROM community_tags) AS tags_count;

@@ -19,8 +19,8 @@ export interface ChatHistory {
   previewImages: string[];
   isPublic: boolean;
   tags: string[];
-  communityPostId?: string;  // ✅ 持久化发布后的 community_posts.id
-  artifacts?: Array<{  // 添加 artifacts 字段
+  communityPostId?: string;  // community_posts.id after publish
+  artifacts?: Array<{  // artifacts field
     kind: 'mindmap' | 'image' | 'save';
     createdAt: string;
     summary: string;
@@ -37,12 +37,12 @@ interface HistoryPageProps {
   onCanvasClosed?: (sessionId: string) => void;
 }
 
-/** 卡片底部行：Delete + Public/Private Toggle，同一高度对齐 */
-const CardBottomRow = ({ onDelete, isPublic, onToggle }: { onDelete: (e: React.MouseEvent) => void; isPublic: boolean; onToggle: () => void }) => (
+/** Card bottom row: Delete + Public/Private Toggle, aligned */
+const CardBottomRow = ({ onDelete, isPublic, onToggle }: { onDelete: () => void; isPublic: boolean; onToggle: () => void }) => (
   <div className="flex items-center justify-between w-full mt-3">
     <button
-      onClick={(e) => { e.stopPropagation(); onDelete(e); }}
-      className="w-8 h-8 flex items-center justify-center flex-shrink-0 border-2 border-[#1a1a1a] bg-[#faf8f3] hover:bg-red-100 transition-colors hand-drawn-border group/delete"
+      onClick={(e) => { e.stopPropagation(); onDelete(); }}
+      className="w-8 h-8 flex items-center justify-center flex-shrink-0 border-2 border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] transition-colors hand-drawn-border group/delete"
       title="Delete"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover/delete:text-red-600">
@@ -119,8 +119,10 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChatDetail, setSelectedChatDetail] = useState<any>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // 当选中 archive 时，加载完整详情（包含 artifacts）
+  // When archive selected, load full detail (including artifacts)
   useEffect(() => {
     if (!selectedChatId) {
       setSelectedChatDetail(null);
@@ -138,7 +140,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         if (!response.ok) throw new Error('Failed to load detail');
         const data = await response.json();
         
-        // 适配新的响应格式：{ ok: true, item: {...} }
+        // Adapt to new response format: { ok: true, item: {...} }
         const detail = data.ok ? data.item : data;
         console.log('[HistoryPage] Loaded archive detail:', {
           id: detail.id,
@@ -158,20 +160,31 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
     loadDetail();
   }, [selectedChatId]);
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this item?')) return;
-    
+  const requestDelete = (id: string) => {
+    setDeleteTargetId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTargetId) return;
+    setIsDeleting(true);
     try {
-      await deleteHistoryItem(id);
+      await deleteHistoryItem(deleteTargetId);
       if (onDeleteHistory) {
-        onDeleteHistory(id);
+        onDeleteHistory(deleteTargetId);
       }
       toast.success('Deleted successfully', { className: 'handwritten font-bold' });
+      setDeleteTargetId(null);
     } catch (error) {
       console.error('Failed to delete:', error);
       toast.error('Failed to delete', { className: 'handwritten font-bold' });
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const cancelDelete = () => {
+    if (isDeleting) return;
+    setDeleteTargetId(null);
   };
 
   const formatDate = (date: Date) => {
@@ -192,7 +205,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
     const target = history.find(item => item.id === id);
     if (!target) return;
     
-    // ✅ 关键：使用 sessionId 而不是 id
+    // Use sessionId, not id
     if (!target.sessionId) {
       console.error('[HistoryPage] Missing sessionId for item:', id);
       toast.error('Cannot publish: missing session ID');
@@ -201,7 +214,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
     
     const newPublicState = !target.isPublic;
     
-    // ✅ 直接更新 - 后端 PATCH 会自动处理 publish/unpublish 到 community_posts
+    // Backend PATCH auto-handles publish/unpublish to community_posts
     onUpdateHistory(id, { isPublic: newPublicState });
     
     // Show user feedback
@@ -229,7 +242,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
     }
 
     if (selectedChatDetail) {
-      // 从 artifacts 提取所有图片 URL（支持 type 和 kind 两种字段名）
+      // Extract image URLs from artifacts (supports both type and kind)
       const artifacts = selectedChatDetail.artifacts || [];
       console.log('[HistoryPage] Rendering detail with artifacts:', artifacts);
       
@@ -256,7 +269,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
         }))
         .filter((mindmap: any) => !!mindmap.mermaidCode);
 
-      // Fallback: 如果 artifacts 为空，使用 previewImages（只有URL，没有title/summary）
+      // Fallback: if artifacts empty, use previewImages (URLs only, no title/summary)
       const imagesToShow = allImages.length > 0 
         ? allImages
         : selectedChatDetail.previewImages;
@@ -271,10 +284,10 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
             content: selectedChatDetail.lastMessage,
             tags: selectedChatDetail.tags,
             isPublic: selectedChatDetail.isPublic,
-            contentJson: selectedChatDetail.contentJson  // ✅ 传递完整的 contentJson（包含 items）
+            contentJson: selectedChatDetail.contentJson  // Pass full contentJson (includes items)
           }}
           onClose={async () => {
-            // 重新加载 archive 详情以获取最新的标题
+            // Reload archive detail to get latest title
             try {
               const response = await fetch(`/api/history/${selectedChatId}`, {
                 headers: {
@@ -442,7 +455,7 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
                   </div>
 
                   <CardBottomRow
-                    onDelete={(e) => handleDelete(chat.id, e)}
+                    onDelete={() => requestDelete(chat.id)}
                     isPublic={chat.isPublic}
                     onToggle={() => togglePublic(chat.id)}
                   />
@@ -539,6 +552,45 @@ export function HistoryPage({ onNavigateToCommunity, history, onUpdateHistory, o
           </div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTargetId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3"
+          aria-modal="true"
+          role="alertdialog"
+          onClick={cancelDelete}
+        >
+          <div className="absolute inset-0 bg-[#1a1a1a]/30" />
+          <div
+            className="relative inline-block max-w-md bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-4 hand-drawn-border wireframe-shadow text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-bold handwritten text-lg mb-2">Delete this canvas?</p>
+            <p className="text-sm text-[#4a4a4a] mb-4">
+              This action cannot be undone. The canvas and its published post will be removed from Archive and Discover.
+            </p>
+            <div className="flex justify-center gap-4 mt-2">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-bold handwritten border-[2px] border-[#1a1a1a] bg-[#faf8f3] hover:bg-[#e8e4d9] transition-colors hand-drawn-border"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-bold handwritten border-[2px] border-[#1a1a1a] bg-[#1a1a1a] text-[#faf8f3] hover:bg-red-600 transition-colors hand-drawn-border"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

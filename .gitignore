@@ -10,6 +10,6 @@ build
 *.log
 .vercel
 
-# 团队共享的环境变量文件（包含敏感信息）
+# Team-shared env file (contains secrets)
 team-env.txt
 team-config.txt

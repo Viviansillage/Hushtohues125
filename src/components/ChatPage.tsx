@@ -16,10 +16,10 @@ interface Message {
   artifact?: {
     type: 'mindmap' | 'image' | 'save';
     data?: any;
-    artifactId?: string;  // 后端返回的artifactId
-    saved?: boolean;      // 是否已保存到archive
+    artifactId?: string;  // artifactId from backend
+    saved?: boolean;      // Whether saved to archive
   };
-  saved?: boolean;      // ← 新增：标记整条消息是否已保存到Canvas
+  saved?: boolean;      // Whether entire message is saved to Canvas
   provider?: string;  // AI provider name (e.g., 'Google Gemini')
   model?: string;     // Model name (e.g., 'gemini-2.5-flash')
 }
@@ -44,7 +44,7 @@ const mapMessage = (message: { id: string; text: string; sender: 'user' | 'bot';
   timestamp: new Date(message.timestamp)
 });
 
-/** 从图片 URL 获取尺寸，供 canvas 按宽高比计算高度 */
+/** Get image size from URL for canvas aspect-ratio height */
 const getImageDimensions = (url: string): Promise<{ width: number; height: number } | null> =>
   new Promise((resolve) => {
     const img = new Image();
@@ -53,7 +53,7 @@ const getImageDimensions = (url: string): Promise<{ width: number; height: numbe
     img.src = url;
   });
 
-/** 为 image artifact 补充 imageWidth/imageHeight，用于 canvas 按比例显示 */
+/** Add imageWidth/imageHeight to image artifact for canvas scaling */
 const enrichArtifactWithImageDimensions = async (artifact: { type: string; data?: any }): Promise<{ type: string; data: any }> => {
   if (artifact?.type !== 'image' || !artifact.data) return artifact;
   const url = artifact.data.imageUrl || artifact.data.url;
@@ -64,32 +64,32 @@ const enrichArtifactWithImageDimensions = async (artifact: { type: string; data?
 };
 
 /**
- * 创建最小化上下文用于 artifact 生成
- * - 只发送最后 N 条消息
- * - 只包含纯文本，移除 artifacts
- * - 截断每条消息以防止超长
- * - 过滤掉任何包含 base64 的内容
+ * Create minimal context for artifact generation
+ * - Send only last N messages
+ * - Plain text only, no artifacts
+ * - Truncate each message to avoid overflow
+ * - Filter out any base64 content
  */
 const buildMinimalContext = (messages: Message[], maxMessages = 8, maxLength = 1500): Array<{ role: 'user' | 'assistant'; content: string }> => {
-  // 取最后 N 条消息（减少到 8 条以确保安全）
+  // Take last N messages (8 for safety)
   const recentMessages = messages.slice(-maxMessages);
   
   return recentMessages
-    .filter(msg => !msg.text.includes('base64') && !msg.text.includes('data:image')) // 过滤 base64
+    .filter(msg => !msg.text.includes('base64') && !msg.text.includes('data:image')) // Filter base64
     .map(msg => ({
       role: msg.sender === 'user' ? 'user' : 'assistant',
-      content: msg.text.substring(0, maxLength) // 截断到安全长度
-      // 明确不包含 artifact 数据
+      content: msg.text.substring(0, maxLength) // Truncate to safe length
+      // No artifact data
   }));
 };
 
-// Mermaid 思维导图渲染组件
+// Mermaid mindmap render component
 const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }) => {
   const mermaidRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (mermaidRef.current && mermaidCode) {
-      // 初始化 Mermaid
+      // Init Mermaid
       mermaid.initialize({
         startOnLoad: false,
         theme: 'default',
@@ -100,7 +100,7 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
         }
       });
 
-      // 渲染思维导图
+      // Render mindmap
       const renderMindmap = async () => {
         try {
           const { svg } = await mermaid.render(`mermaid-${id}`, mermaidCode);
@@ -123,7 +123,7 @@ const MermaidMindmap = ({ mermaidCode, id }: { mermaidCode: string; id: string }
 };
 
 export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRefreshSavedTrigger }: ChatPageProps) {
-  // ✅ 使用全局 store，确保切页不丢
+  // Use global store so data persists across page switches
   const { conversationId, messages, appendMessage, setMessages, resetChat, loadSession } = useChatStore();
   
   const [inputValue, setInputValue] = useState('');
@@ -155,7 +155,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     }
   }, [conversationId]);
 
-  // ✅ 刷新时恢复消息：优先从 sessionStorage（含 image/diagram），否则从 DB（仅文本）
+  // On refresh restore: prefer sessionStorage (incl image/diagram), else DB (text only)
   useEffect(() => {
     const loadHistoryMessages = async () => {
       // Prevent duplicate loads
@@ -171,7 +171,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         return;
       }
 
-      // 1. 优先从 sessionStorage 恢复（含 image/diagram），刷新后图仍可显示
+      // 1. Prefer sessionStorage (incl image/diagram), images still show after refresh
       const TEMP_SESSION_KEY = 'hth_temp_session';
       const stored = sessionStorage.getItem(TEMP_SESSION_KEY);
       if (stored) {
@@ -191,7 +191,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         }
       }
 
-      // 2. 否则从 API 加载（仅文本，history 不存 image/diagram）
+      // 2. Else load from API (text only, history doesn't store image/diagram)
       try {
         console.log('[ChatPage] 🔄 Loading history for sessionId:', conversationId);
         const response = await fetch(`/api/chat?action=load&sessionId=${conversationId}`, {
@@ -210,7 +210,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         if (loadedMessages.length > 0) {
           console.log('[ChatPage] ✅ Restored', loadedMessages.length, 'messages from DB');
           
-          // ✅ 加载savedMessages列表，标记哪些消息已保存
+          // Load savedMessages list, mark which messages are saved
           try {
             console.log('[ChatPage] 📋 Fetching saved messages for sessionId:', conversationId);
             
@@ -229,7 +229,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                 ids: savedMessages
               });
               
-              // 标记已保存的消息
+              // Mark saved messages
               const messagesWithSavedStatus = loadedMessages.map(msg => ({
                 ...msg,
                 saved: savedMessages.includes(msg.id)
@@ -259,7 +259,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         hasLoadedRef.current = true;
       } catch (error) {
         console.error('[ChatPage] ❌ Failed to load history:', error);
-        // 静默失败，不影响用户继续使用
+        // Fail silently, don't block user
         hasLoadedRef.current = true;
       } finally {
         setIsLoadingHistory(false);
@@ -305,7 +305,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     };
   }, [refreshSavedForSessionId, conversationId, setMessages, onClearedRefreshSavedTrigger, messages.length]);
 
-  // 自动保存聊天历史（只保存文字，不保存图片）- DEBOUNCED to prevent spam
+  // Auto-save chat history (text only, no images) - DEBOUNCED to prevent spam
   useEffect(() => {
     // Clear any existing timeout
     if (saveTimeoutRef.current) {
@@ -319,10 +319,10 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         return;
       }
 
-      // 只在有消息且有 AI 回复时才保存
+      // Save only when there are messages and AI reply
       if (messages.length < 2) return;
       
-      // 过滤掉包含图片的消息，只保留文字对话
+      // Filter out image messages, keep text only
       const textOnlyMessages = messages
         .filter(msg => !msg.artifact || msg.artifact.type !== 'image')
         .map(msg => ({
@@ -344,13 +344,13 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         return;
       }
       
-      // 生成标题（使用第一条用户消息或默认标题）
+      // Generate title (first user message or default)
       const firstUserMessage = messages.find(m => m.sender === 'user');
       const title = firstUserMessage 
         ? firstUserMessage.text.substring(0, 50) + (firstUserMessage.text.length > 50 ? '...' : '')
         : 'Chat Session';
       
-      // 获取最后一条消息作为摘要
+      // Use last message as summary
       const lastMessage = messages[messages.length - 1];
       const content = lastMessage.text.substring(0, 200);
       
@@ -360,12 +360,12 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
           title,
           content,
           messages: textOnlyMessages,
-          previewImages: []  // 不保存图片
+          previewImages: []  // Don't save images
         });
         console.log('[ChatPage] ✅ Auto-saved chat history:', title);
         lastSaveHashRef.current = messageHash;
         
-        // 触发历史记录刷新
+        // Trigger history refresh
         if (onHistorySync) {
           onHistorySync();
         }
@@ -374,7 +374,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
       }
     };
     
-    // ✅ 使用防抖，避免频繁保存 - INCREASED to 5 seconds
+    // Debounce to avoid frequent saves - 5 seconds
     saveTimeoutRef.current = setTimeout(autoSaveHistory, 5000);
     
     return () => {
@@ -399,7 +399,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     setInputValue('');
     setIsSending(true);
 
-    // ✅ 立即显示用户消息 - 使用 appendMessage
+    // Show user message immediately - use appendMessage
     const userMessage: Message = {
       id: `msg-${Date.now()}-u`,
       text: messageText,
@@ -412,15 +412,15 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     isDirtyRef.current = true;
 
     try {
-      // ✅ 使用 store 的 conversationId
+      // Use store's conversationId
       const response = await sendChatMessage(messageText, conversationId) as any;
       
-      // 只添加 AI 回复（最后一条消息）
+      // Add only AI reply (last message)
       const aiMessage = response.messages[response.messages.length - 1];
-      // #region agent log (browser console - 前端调试：收到 API 回复后的内容)
+      // #region agent log (browser console - API response)
       if (aiMessage?.text) {
         const t = aiMessage.text;
-        console.log('[ChatDebug] 收到 AI 回复', {
+        console.log('[ChatDebug] AI reply received', {
           replyLength: t.length,
           replyStartsWithJson: t.trim().startsWith('{'),
           preview: t.substring(0, 120)
@@ -429,7 +429,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
       // #endregion
       if (aiMessage && aiMessage.sender === 'bot') {
         const mappedMessage = mapMessage(aiMessage);
-        // ✅ 添加 provider 和 model 信息
+        // Add provider and model info
         if (response.provider) mappedMessage.provider = response.provider;
         if (response.model) mappedMessage.model = response.model;
         appendMessage(mappedMessage);
@@ -439,26 +439,26 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
       const errorText = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error details:', errorText);
       toast.error('Message failed to send.', { className: 'handwritten font-bold' });
-      // 发送失败，移除刚才添加的用户消息
+      // On send fail, remove the user message we added
       setMessages(messages.filter((m: Message) => m.id !== userMessage.id));
     } finally {
       setIsSending(false);
     }
   };
 
-  // ✅ 统一的Save按钮处理函数
+  // Unified Save button handler
   const handleSaveMessage = async (message: Message) => {
     if (message.saved || (message.artifact && message.artifact.saved)) return;
     
     try {
-      // 在保存前测量文本实际高度，避免 append 时重叠
+      // Measure text height before save to avoid overlap on append
       const textToMeasure = message.artifact?.data?.summary ?? message.text;
       const textWidth = message.artifact ? 400 : 600;
       const measuredHeight = typeof textToMeasure === 'string' && textToMeasure.trim()
         ? measureCanvasTextHeight(textToMeasure, textWidth)
         : undefined;
 
-      // 若为图片，补充 imageWidth/imageHeight 供服务端按宽高比计算高度
+      // For images, add imageWidth/imageHeight for server aspect-ratio calc
       let artifactToSend = message.artifact;
       if (message.artifact?.type === 'image' && (message.artifact.data?.imageUrl || message.artifact.data?.url)) {
         artifactToSend = await enrichArtifactWithImageDimensions(message.artifact);
@@ -483,7 +483,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
           messageId: message.id,
           messageText: message.text,
           artifact: artifactToSend,
-          measuredHeight  // 客户端测量的文本高度，优先于服务端估算
+          measuredHeight  // Client-measured text height, preferred over server estimate
         })
       });
       
@@ -491,14 +491,14 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
       console.log('[Save Message] Response:', result);
       
       if (response.ok && result.ok === true && result.archiveId) {
-        // 更新本地状态
+        // Update local state
         const updated = messages.map(m => {
           if (m.id === message.id) {
             if (m.artifact) {
-              // 有artifact：标记artifact为saved
+              // Has artifact: mark artifact as saved
               return { ...m, artifact: { ...m.artifact, saved: true } };
             } else {
-              // 无artifact：标记消息为saved
+              // No artifact: mark message as saved
               return { ...m, saved: true };
             }
           }
@@ -526,19 +526,19 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     setArtifactType(kind);
     
     try {
-      // ✅ 使用 store 的 conversationId
+      // Use store's conversationId
       console.log('📤 Creating artifact:', {
         kind,
         conversationId,
         totalMessages: messages.length
       });
       
-      // 调用 API（后端从数据库读取 messages）
+      // Call API (backend reads messages from DB)
       const response = await createChatArtifact(kind, conversationId);
       
-      // ✅ 验证 image artifact 必须有 imageUrl
+      // Validate image artifact must have imageUrl
       if (kind === 'image') {
-        // 优先读取 artifact.imageUrl，fallback 到 generatedImage.imageUrl
+        // Prefer artifact.imageUrl, fallback to generatedImage.imageUrl
         const imageUrl = response.artifact?.imageUrl || response.generatedImage?.imageUrl;
         if (!imageUrl || !imageUrl.startsWith('http')) {
           console.error('❌ Image artifact missing valid URL:', response);
@@ -548,7 +548,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         console.log('✅ Image URL validated:', imageUrl);
       }
       
-      // 🔒 创建 artifact 消息：只存储 URL 和元数据，绝对不存 base64
+      // Create artifact message: store URL and metadata only, never base64
       const artifactMessage: Message = {
         id: `msg-${Date.now()}-artifact`,
         text: response.message.text,
@@ -564,23 +564,23 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
               }
             : kind === 'image' 
               ? {
-                  // 优先从 artifact 读取，fallback 到 generatedImage
+                  // Prefer artifact, fallback to generatedImage
                   imageUrl: response.artifact?.imageUrl || response.generatedImage?.imageUrl,
                   title: response.artifact?.title || response.generatedImage?.title,
                   summary: response.artifact?.summary || response.generatedImage?.summary,
                   provider: response.artifact?.provider || response.generatedImage?.provider,
                   model: response.artifact?.model || response.generatedImage?.model,
                   storagePath: response.artifact?.storagePath
-                  // 明确不包含：imageBase64, inlineData, dataUrl, bytes
+                  // Explicitly exclude: imageBase64, inlineData, dataUrl, bytes
                 }
               : undefined
         }
       };
       
-      // ✅ 使用 store 的 appendMessage
+      // Use store's appendMessage
       appendMessage(artifactMessage);
       
-      // ✅ 所有artifact只是生成成功，不自动保存到archive
+      // Artifacts are generated only, not auto-saved to archive
       const kindLabel = kind === 'mindmap' ? 'Mindmap' : kind === 'image' ? 'Image' : kind;
       toast.success(`✅ ${kindLabel} generated successfully`, { 
         className: 'handwritten font-bold',
@@ -590,7 +590,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     } catch (error) {
       console.error('❌ Artifact creation failed:', error);
       
-      // 🔥 改进错误处理：提取关键信息，避免巨大字符串
+      // Extract key info for error handling, avoid huge strings
       let errorMessage = 'Could not create artifact';
       
       if (error instanceof Error) {
@@ -598,7 +598,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
           const errorData = JSON.parse(error.message);
           errorMessage = errorData.error || errorData.message || errorMessage;
         } catch {
-          // 截断错误消息以防止 toast 过长
+          // Truncate error message to avoid long toast
           errorMessage = error.message?.substring(0, 150) || errorMessage;
         }
       }
@@ -613,14 +613,14 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     }
   };
 
-  // ✅ New Chat 按钮：调用 store 的 resetChat
+  // New Chat button: call store's resetChat
   const handleNewChat = () => {
     console.log('handleNewChat clicked');
     setShowNewChatDialog(true);
   };
 
   const saveAllArtifactsInChat = async () => {
-    // ✅ 只收集artifacts（image/mindmap），不再自动保存所有对话文本
+    // Collect only artifacts (image/mindmap), no longer auto-save all text
     const artifactsToSave = messages
       .filter(
         (message) =>
@@ -639,7 +639,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     const savedMessageIds: string[] = [];
 
     const saveArtifact = async (artifact: { type: string; data: any }, messageId?: string) => {
-      // 若为图片，补充 imageWidth/imageHeight 供服务端按宽高比计算高度
+      // For images, add imageWidth/imageHeight for server aspect-ratio calc
       const enriched = artifact.type === 'image' && (artifact.data?.imageUrl || artifact.data?.url)
         ? await enrichArtifactWithImageDimensions(artifact)
         : artifact;
@@ -670,11 +670,11 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     };
 
     try {
-      // ✅ 串行保存所有artifacts，避免并发竞态条件
+      // Save all artifacts serially to avoid race conditions
       const savedItems: string[] = [];
       const failures: any[] = [];
 
-      // 保存所有artifacts（串行）
+      // Save all artifacts (serial)
       for (const { messageId, artifact } of artifactsToSave) {
         try {
           const result = await saveArtifact({ type: artifact.type, data: artifact.data }, messageId);
@@ -687,7 +687,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
         }
       }
 
-      // 更新UI标记为已保存
+      // Update UI as saved
       if (savedMessageIds.length > 0) {
         const updated = messages.map((message) =>
           savedMessageIds.includes(message.id) && message.artifact
@@ -718,7 +718,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
   };
 
   const confirmNewChat = async () => {
-    // ✅ 使用全局 store 的 resetChat
+    // Use global store's resetChat
     resetChat();
     setInputValue('');
     setShowNewChatDialog(false);
@@ -734,7 +734,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
     }
   };
 
-  // 输入框随内容自动增高
+  // Input grows with content
   useLayoutEffect(() => {
     const ta = inputRef.current;
     if (!ta) return;
@@ -883,10 +883,10 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
               >
                 <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
                 
-                {/* 渲染思维导图 */}
+                {/* Render mindmap */}
                 {message.artifact?.type === 'mindmap' && message.artifact.data && (
                   <div className="mt-4 p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
-                    {/* 头部 */}
+                    {/* Header */}
                     <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
                       <span className="text-2xl">🧠</span>
                       <h3 className="font-bold text-xl text-gray-800">
@@ -894,7 +894,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                       </h3>
                     </div>
                     
-                    {/* 主内容区 - flowchart 可能较宽，允许横向滚动避免节点文字被裁切 */}
+                    {/* Main content - flowchart may be wide, allow horizontal scroll */}
                     <div className="bg-white rounded-lg p-4 w-full max-w-[560px] overflow-x-auto overflow-y-auto">
                       <MermaidMindmap 
                         mermaidCode={message.artifact.data.mermaidCode || 'mindmap\n  root((Empty))'} 
@@ -902,17 +902,17 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                       />
                     </div>
                     
-                    {/* 描述文字区 */}
+                    {/* Description area */}
                     {message.artifact.data.summary && (
                       <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
                     )}
                   </div>
                 )}
 
-                {/* 渲染生成的图片 */}
+                {/* Render generated image */}
                 {message.artifact?.type === 'image' && message.artifact.data && (
                   <div className="mt-4 p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-[#1a1a1a] hand-drawn-border shadow-lg">
-                    {/* 头部 */}
+                    {/* Header */}
                     <div className="flex items-center gap-2 mb-4 pb-3 border-b-2 border-dashed border-gray-300">
                       <span className="text-2xl">🎨</span>
                       <h3 className="font-bold text-xl text-gray-800">
@@ -920,7 +920,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                       </h3>
                     </div>
                     
-                    {/* 主内容区 */}
+                    {/* Main content */}
                     <div className="bg-white rounded-lg p-4">
                       {message.artifact.data.imageUrl ? (
                         <img 
@@ -942,11 +942,11 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                       )}
                     </div>
                     
-                    {/* 描述文字区 */}
+                    {/* Description area */}
                     {message.artifact.data.summary && (
                       <p className="mt-3 text-sm text-gray-600 italic">{message.artifact.data.summary}</p>
                     )}
-                    {/* 🔍 调试信息：显示 provider/model */}
+                    {/* Debug: show provider/model */}
                     {(message.artifact.data.provider || message.artifact.data.model) && (
                       <div className="mt-2 text-xs text-gray-400 font-mono">
                         provider={message.artifact.data.provider || 'unknown'} | 
@@ -962,7 +962,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                   </div>
                 )}
                 
-                {/* ✅ 可观测性：显示 provider 和 model */}
+                {/* Observability: show provider and model */}
                 {message.sender === 'bot' && (message.provider || message.model) && (
                   <div className="mt-3 pt-2 border-t border-dashed border-gray-300 flex items-center gap-3 text-xs text-gray-500">
                     {message.provider && (
@@ -981,7 +981,7 @@ export function ChatPage({ onHistorySync, refreshSavedForSessionId, onClearedRef
                   </div>
                 )}
                 
-                {/* ✅ 统一Save按钮 - 所有bot消息都显示 */}
+                {/* Unified Save button - shown on all bot messages */}
                 {message.sender === 'bot' && (
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-dashed border-gray-300">
                     <span className="text-xs text-[#6d6d6d]">

@@ -1,37 +1,37 @@
-# CommunityDetailPage 旧版 vs 当前版 对比
+# CommunityDetailPage: Legacy vs Current
 
-## 1. 核心区别（不能混用）
+## 1. Core Differences (cannot mix)
 
-| 项目 | 旧版 (CommunityDetailPage.old.tsx) | 当前版 (CommunityDetailPage.tsx) |
+| Item | Legacy (CommunityDetailPage.old.tsx) | Current (CommunityDetailPage.tsx) |
 |------|-------------------------------------|-----------------------------------|
-| **页面含义** | **分区详情页**：展示「某个分区」下的帖子列表 + 侧栏 | **帖子详情页**：展示「某一条帖子」的 canvas 全文 |
-| **入口** | 从 Following 点进某个分区（传 `communityName`） | 从 Discover 或分区 feed 点进某条帖子（传 `postId`） |
+| **Page meaning** | **Community detail page**: shows post list + sidebar for a community | **Post detail page**: shows full canvas of a single post |
+| **Entry** | From Following → click community (pass `communityName`) | From Discover or community feed → click post (pass `postId`) |
 | **Props** | `communityName: string`, `onBack` | `postId: string`, `onBack` |
-| **API** | `getCommunityDetail(communityName)`，期望返回 `{ joined, detail: { members, online, posts[] } }` | `getCommunityDetail(postId)`，返回单条帖子的 canvas（title, images, mindmaps, content, author, stats…） |
-| **后端** | 需要「按分区名返回 members + online + 帖子列表」的接口 | 当前只有「按 postId 返回单帖详情」的接口 |
+| **API** | `getCommunityDetail(communityName)` returns `{ joined, detail: { members, online, posts[] } }` | `getCommunityDetail(postId)` returns single post canvas (title, images, mindmaps, content, author, stats…) |
+| **Backend** | Needs endpoint to return members + online + post list by community name | Current only has endpoint to return single post by postId |
 
-## 2. 旧版被删掉的内容（UI）
+## 2. Legacy Content Removed (UI)
 
-- **Back to Communities** 按钮
-- **分区头**：`#` 图标 + 分区名 + X Members + X Online + Follow/Unfollow 按钮
-- **Latest Discussions** 标题 + 「Filter by」
-- **帖子列表**：每条有头像、作者、时间、content 文案、tags、点赞/评论（可点击 like）
-- **侧栏 About Community**：一段描述 + Created Jan 2025 + English
-- **侧栏 Trending Topics**：静态列表如 #Beginner Guide, #Showcase, #Weekly Challenge
+- **Back to Communities** button
+- **Community header**: `#` icon + name + X Members + X Online + Follow/Unfollow button
+- **Latest Discussions** title + "Filter by"
+- **Post list**: each with avatar, author, time, content, tags, like/comment (clickable like)
+- **Sidebar About Community**: description + Created Jan 2025 + English
+- **Sidebar Trending Topics**: static list e.g. #Beginner Guide, #Showcase, #Weekly Challenge
 
-## 3. 当前逻辑（不能破坏）
+## 3. Current Logic (must not break)
 
-- **Discover 点卡片** → `handleNavigateToCommunity(post.id)` → `CommunityDetailPage` 传 **postId** → 必须显示**单条帖子的 canvas**（当前实现）。
-- **Following 点分区** → `handleEnterCommunity(community)` → `CommunityFeedPage` 传 **community** → 显示该分区的**帖子列表**（已实现）。
+- **Discover → click card** → `handleNavigateToCommunity(post.id)` → `CommunityDetailPage` receives **postId** → must show **single post canvas** (current impl).
+- **Following → click community** → `handleEnterCommunity(community)` → `CommunityFeedPage` receives **community** → shows that community's **post list** (implemented).
 
-若把旧版直接恢复成 `CommunityDetailPage`：
-- 组件会期望 `communityName` 和旧 API 返回的 `posts[]`；
-- App 在「点帖子」时传的是 `postId`，会报错或白屏；
-- 且后端已无「按 communityName 返回分区详情」的接口。
+If legacy is restored as `CommunityDetailPage`:
+- Component would expect `communityName` and legacy API `posts[]`;
+- App passes `postId` when "click post", would error or white screen;
+- Backend no longer has "return community detail by communityName" endpoint.
 
-## 4. 结论与恢复方式
+## 4. Conclusion and Restoration
 
-- **不要**用旧版替换当前的 `CommunityDetailPage.tsx`，否则「点帖子看 canvas」会坏掉。
-- **分区详情**已经由 **CommunityFeedPage** 承担（从 Following 进入），数据用 `getDiscoverFeed(communityName)` + `community.stats`。
-- 若要让「分区详情」的界面和旧版一致，应**只改 CommunityFeedPage**：把旧版里的文案、布局、样式抄过去（Back to Communities、Join/Unfollow、About Community、Trending Topics 等），数据仍用现有 API。  
-- **CommunityDetailPage.old.tsx** 可保留作参考或删除，不要作为当前的 CommunityDetailPage 使用。
+- **Do not** replace current `CommunityDetailPage.tsx` with legacy, or "click post to see canvas" will break.
+- **Community detail** is now handled by **CommunityFeedPage** (from Following), using `getDiscoverFeed(communityName)` + `community.stats`.
+- To match legacy "community detail" UI, **only change CommunityFeedPage**: copy text, layout, and styles from legacy (Back to Communities, Join/Unfollow, About Community, Trending Topics etc.), keep existing API.
+- **CommunityDetailPage.old.tsx** can be kept as reference or deleted; do not use as current CommunityDetailPage.

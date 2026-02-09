@@ -35,7 +35,7 @@ export function ChatHistoryDetailPage({ sessionId, onBack }: ChatHistoryDetailPa
         const data = await response.json();
         setMessages(data.messages || []);
         
-        // 从第一条消息获取标题
+        // Get title from first message
         if (data.messages && data.messages.length > 0) {
           const firstUserMsg = data.messages.find((m: Message) => m.sender === 'user');
           if (firstUserMsg) {

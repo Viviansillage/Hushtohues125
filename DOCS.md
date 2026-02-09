@@ -80,7 +80,7 @@ Generate diagram (mindmap / graph / flowchart), image, or save to archive.
         "storagePath": "artifacts/2026/01/xxx.png",
         "imagePrompt": "Peaceful morning scene...",
         "provider": "gemini",
-        "model": "gemini-2.5-flash-image"
+        "model": "gemini-3-pro-image-preview"
       }
     }
   },
@@ -241,10 +241,19 @@ Check image generation setup status.
 
 ## 🤖 Gemini Integration
 
+### Features using Gemini API
+
+| Feature | Description | Model | Code location |
+|---------|-------------|-------|---------------|
+| **Process conversations and extract logic** | Parse user input, clarify meaning, return structured JSON (reply, title, summary, tags, follow-up questions, mindmap skeleton) | `gemini-3-pro-preview` | `api/chat.js` → `callGemini` |
+| **Generate images and diagrams** | Mermaid diagrams (mindmap / graph / flowchart) from conversation; AI images from generated prompts | Diagram: `gemini-3-pro-preview`; Image: `gemini-3-pro-image-preview` | `api/chat.js` → `callGemini` (MINDMAP_PROMPT), `callGeminiFlashImage` |
+| **Auto-extract tags from canvas text** | Suggest semantic tags when saving or editing canvas content | `gemini-3-pro-preview` | `api/supabase.js` → `generateSemanticTags` |
+| **Intelligently classify content into communities** | Assign canvas content to one of 7 fixed community categories (Entertainment, Music, Games, Creative, Technology, Lifestyle, Business) when publishing | `gemini-3-pro-preview` | `api/supabase.js` → `classifyCommunityCategory` |
+
 ### Models Used
 
-- **Chat, title, tagging, diagram prompt**: `gemini-2.5-flash` - Conversation and structured JSON
-- **Image generation**: `gemini-2.5-flash-image` - Image generation (overridable via `GEMINI_IMAGE_MODEL`)
+- **Chat, title, tagging, diagram prompt**: `gemini-3-pro-preview` - Conversation and structured JSON (overridable via `GEMINI_TEXT_MODEL`)
+- **Image generation**: `gemini-3-pro-image-preview` - Image generation (overridable via `GEMINI_IMAGE_MODEL`)
 
 ### Chat Configuration
 
@@ -370,17 +379,17 @@ node test-image-api.js
 #### Success Output
 
 ```
-✅ 找到图片！
+✅ Image found!
    - Part 0: image/png, 245678 bytes
-   Data URL 长度: 327570 字符
-   ✅ 此配置有效！
+   Data URL length: 327570 characters
+   ✅ This config works!
 ```
 
 #### Failure Output
 
 ```
-❌ 未找到图片
-   返回的文本:
+❌ Image not found
+   Returned text:
    - Part 0: "I cannot generate images..."
 ```
 
@@ -559,7 +568,8 @@ GEMINI_API_KEY=AIza...
 
 **Optional:**
 ```bash
-GEMINI_IMAGE_MODEL=gemini-2.5-flash-image  # Default
+GEMINI_TEXT_MODEL=gemini-3-pro-preview      # Default for text
+GEMINI_IMAGE_MODEL=gemini-3-pro-image-preview  # Default for image
 NODE_ENV=production
 ```
 

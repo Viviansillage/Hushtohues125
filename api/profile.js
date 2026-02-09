@@ -1,9 +1,9 @@
 import { getProfile, updateProfile, getActor, supabase } from './supabase.js';
 
 /**
- * 验证昵称格式
- * - 3-20 字符
- * - 只允许字母、数字、下划线
+ * Validate nickname format
+ * - 3-20 chars
+ * - Letters, digits, underscore only
  */
 function validateGuestName(name) {
   if (!name || typeof name !== 'string') {
@@ -20,7 +20,7 @@ function validateGuestName(name) {
     return { valid: false, error: 'Name must be at most 20 characters' };
   }
   
-  // 只允许字母、数字、下划线
+  // Letters, digits, underscore only
   const validPattern = /^[a-zA-Z0-9_]+$/;
   if (!validPattern.test(trimmed)) {
     return { valid: false, error: 'Name can only contain letters, numbers, and underscores' };
@@ -56,9 +56,9 @@ export default async function handler(req, res) {
     const actor = getActor(req);
     
     if (req.method === 'GET') {
-      // Guest 从数据库读取自定义昵称（如果有）
+      // Guest: read custom nickname from DB (if any)
       if (actor.type === 'guest' && actor.id) {
-        // 查询该 guest 是否有自定义昵称（从 community_posts 获取最新的 author_name）
+        // Query if guest has custom nickname (latest author_name from community_posts)
         const { data: posts } = await supabase
           .from('community_posts')
           .select('author_name')
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
         return res.status(200).json(guestProfile);
       }
       
-      // User 查询数据库
+      // User: query DB
       const profile = await getProfile();
       return res.status(200).json({ ...profile, isGuest: false });
     }
@@ -87,18 +87,18 @@ export default async function handler(req, res) {
     if (req.method === 'PUT') {
       const body = await parseBody(req);
       
-      // ✅ Guest 可以修改昵称（存储到数据库）
+      // Guest can update nickname (save to DB)
       if (actor.type === 'guest') {
         if (!actor.id) {
           return res.status(401).json({ error: 'Missing guest ID' });
         }
         
-        // 只允许修改 userName
+        // Only allow userName update
         if (!body.userName) {
           return res.status(400).json({ error: 'userName is required' });
         }
         
-        // 验证昵称格式
+        // Validate nickname format
         const validation = validateGuestName(body.userName);
         if (!validation.valid) {
           return res.status(400).json({ error: validation.error });
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
         
         const newName = validation.name;
         
-        // 更新所有该 guest 的帖子昵称
+        // Update nickname for all posts by this guest
         const { error: updateError } = await supabase
           .from('community_posts')
           .update({ 
@@ -120,12 +120,11 @@ export default async function handler(req, res) {
           return res.status(500).json({ error: 'Failed to update name' });
         }
         
-        // 也更新 chat_history 的记录（如果有相关字段）
-        // 注：chat_history 表可能没有 author_name，这里是预防性更新
+        // Also update chat_history records (if relevant fields exist)
         
         console.log(`[✅ profile.js] Updated guest name: ${actor.id.slice(-8)} -> ${newName}`);
         
-        // 返回更新后的 profile
+        // Return updated profile
         const updatedProfile = {
           userName: newName,
           userHandle: `@guest_${actor.id.slice(-6)}`,
@@ -137,7 +136,7 @@ export default async function handler(req, res) {
         return res.status(200).json(updatedProfile);
       }
       
-      // User 修改 profile
+      // User update profile
       const updated = await updateProfile(body);
       return res.status(200).json({ ...updated, isGuest: false });
     }

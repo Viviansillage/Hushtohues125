@@ -1,6 +1,6 @@
 /**
- * 全局聊天状态管理 - 确保切换页面时对话不丢失
- * localStorage 只存轻量信息（conversationId），messages 存内存
+ * Global chat state - ensures conversation persists when switching pages
+ * localStorage stores light data (conversationId), messages in memory
  */
 import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 
@@ -47,7 +47,7 @@ function generateConversationId(): string {
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  // 初始化 conversationId：优先从 localStorage 读取（轻量）
+  // Init conversationId: prefer localStorage (light)
   const [conversationId, setConversationId] = useState<string>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -60,15 +60,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return newId;
   });
 
-  // messages 只存内存（切页不丢，刷新会丢 - 符合要求）
+  // messages in memory only (persist on tab switch, lost on refresh)
   const [messages, setMessagesState] = useState<Message[]>([]);
 
-  // 同步 conversationId 到 localStorage（轻量，安全）
+  // Sync conversationId to localStorage (light, safe)
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, conversationId);
   }, [conversationId]);
 
-  // 自动保存当前会话到 sessionStorage（含 image/diagram），刷新后可恢复
+  // Auto-save current session to sessionStorage (incl. image/diagram) for restore on refresh
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (messages.length === 0) return;
@@ -100,7 +100,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   };
 
   const resetChat = () => {
-    sessionStorage.removeItem(TEMP_SESSION_KEY); // 开启新对话时清除，下次从 history 加载时从 DB 拉取（无 image/diagram）
+    sessionStorage.removeItem(TEMP_SESSION_KEY); // Clear on new chat; next load from history will fetch from DB (no image/diagram)
     const newId = generateConversationId();
     console.log('🔄 Reset chat, new conversationId:', newId);
     setConversationId(newId);

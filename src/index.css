@@ -2723,7 +2723,7 @@ body:after {
   }
 }
 
-/* Mermaid 思维导图 - Chat: 宽固定，高按比例自适应 */
+/* Mermaid mindmap - Chat: fixed width, height scales */
 .mermaid-container {
   width: 100%;
   min-height: 120px;
@@ -2736,7 +2736,7 @@ body:after {
   display: block;
 }
 
-/* Canvas: 边框与内容统一，flowchart 可能较宽，允许横向滚动避免节点文字被裁切 */
+/* Canvas: border aligns with content; flowchart may be wide, allow horizontal scroll to avoid clipping node text */
 .canvas-mindmap-fit .mermaid-container {
   width: 100%;
   height: 100%;
@@ -2754,7 +2754,7 @@ body:after {
   height: auto;
 }
 
-/* 美化 Mermaid 节点 */
+/* Mermaid node styling */
 .mermaid-container .mindmap-node {
   font-family: 'Quicksand', sans-serif;
 }

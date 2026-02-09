@@ -108,7 +108,7 @@ export function CommunityFeedPage({
   return (
     <div className="h-screen overflow-y-auto bg-[#f5f1e8]">
       <div className="max-w-4xl mx-auto px-8 py-8">
-        {/* Back Button - 旧版 UI */}
+        {/* Back Button - legacy UI */}
         <button
           type="button"
           onClick={onBack}
@@ -130,7 +130,7 @@ export function CommunityFeedPage({
           Back to Communities
         </button>
 
-        {/* Loading State - 旧版 UI */}
+        {/* Loading State - legacy UI */}
         {loading && (
           <div className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-12 hand-drawn-border wireframe-shadow text-center">
             <div className="animate-pulse">
@@ -139,7 +139,7 @@ export function CommunityFeedPage({
           </div>
         )}
 
-        {/* Content - 仅非 loading 时展示，沿用旧版布局与样式 */}
+        {/* Content - shown when not loading, uses legacy layout and styles */}
         {!loading && (
           <>
             <div className="bg-[#faf8f3] border-[2.5px] border-[#1a1a1a] p-8 mb-8 hand-drawn-border relative overflow-visible">

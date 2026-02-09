@@ -1,11 +1,11 @@
 -- ========================================
--- Hush to Hues - 完整数据库重建脚本
+-- Hush to Hues - Full database reset script
 -- ========================================
--- 用法：在Supabase SQL Editor中直接运行此文件
--- 注意：此操作会删除所有现有数据！
+-- Usage: run this file directly in Supabase SQL Editor
+-- Warning: this will delete ALL existing data!
 -- ========================================
 
--- 第一步：删除所有旧表（如果存在）
+-- Step 1: drop all old tables (if they exist)
 DROP TABLE IF EXISTS user_likes CASCADE;
 DROP TABLE IF EXISTS user_bookmarks CASCADE;
 DROP TABLE IF EXISTS user_followed_communities CASCADE;
@@ -17,9 +17,9 @@ DROP TABLE IF EXISTS community_posts CASCADE;
 DROP TABLE IF EXISTS community_tags CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
 
--- 第二步：创建新表
+-- Step 2: create new tables
 
--- 1. 用户配置表
+-- 1. User profiles table
 CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_name TEXT NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. 聊天会话表
+-- 2. Chat sessions table
 CREATE TABLE chat_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id TEXT NOT NULL UNIQUE,
@@ -48,7 +48,7 @@ CREATE TABLE chat_sessions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. 聊天消息表
+-- 3. Chat messages table
 CREATE TABLE chat_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
@@ -60,7 +60,7 @@ CREATE TABLE chat_messages (
   UNIQUE(session_id, message_id)
 );
 
--- 4. Artifacts表（存储生成的图片、mindmap等）
+-- 4. Artifacts table (store generated images, mindmaps, etc.)
 CREATE TABLE artifacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
@@ -74,7 +74,7 @@ CREATE TABLE artifacts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. 历史记录表（兼容旧代码和新代码）
+-- 5. History table (compatible with old and new code)
 CREATE TABLE chat_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -93,11 +93,11 @@ CREATE TABLE chat_history (
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  -- ✅ 确保同一session只有一个archive记录
+  -- Ensure only one archive record per session for a given owner
   UNIQUE(owner_type, owner_id, session_id)
 );
 
--- 6. 社区标签/分类表（必须在community_posts之前创建，因为有外键）
+-- 6. Community tags/categories table (must be created before community_posts because of FK)
 CREATE TABLE community_tags (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
@@ -108,7 +108,7 @@ CREATE TABLE community_tags (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. 社区帖子表（完整字段）
+-- 7. Community posts table (full fields)
 CREATE TABLE community_posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id TEXT UNIQUE,
@@ -138,7 +138,7 @@ CREATE TABLE community_posts (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. 用户点赞表（同时支持profile_id和actor模式）
+-- 8. User likes table (supports both profile_id and actor modes)
 CREATE TABLE user_likes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -150,7 +150,7 @@ CREATE TABLE user_likes (
   UNIQUE(actor_type, actor_id, target_type, target_id)
 );
 
--- 9. 用户收藏表
+-- 9. User bookmarks table
 CREATE TABLE user_bookmarks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -163,7 +163,7 @@ CREATE TABLE user_bookmarks (
   UNIQUE(actor_type, actor_id, target_type, target_id)
 );
 
--- 10. 用户关注的社区
+-- 10. User followed communities
 CREATE TABLE user_followed_communities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -175,26 +175,26 @@ CREATE TABLE user_followed_communities (
   UNIQUE(actor_type, actor_id, community_tag_id)
 );
 
--- 第三步：创建索引（提升查询性能）
+-- Step 3: create indexes (performance)
 
--- profiles 索引
+-- profiles indexes
 CREATE INDEX idx_profiles_handle ON profiles(user_handle);
 
--- chat_sessions 索引
+-- chat_sessions indexes
 CREATE INDEX idx_chat_sessions_session_id ON chat_sessions(session_id);
 CREATE INDEX idx_chat_sessions_owner ON chat_sessions(owner_type, owner_id);
 CREATE INDEX idx_chat_sessions_created_at ON chat_sessions(created_at DESC);
 
--- chat_messages 索引
+-- chat_messages indexes
 CREATE INDEX idx_chat_messages_session_id ON chat_messages(session_id);
 CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp DESC);
 
--- artifacts 索引
+-- artifacts indexes
 CREATE INDEX idx_artifacts_session_id ON artifacts(session_id);
 CREATE INDEX idx_artifacts_type ON artifacts(artifact_type);
 CREATE INDEX idx_artifacts_created_at ON artifacts(created_at DESC);
 
--- chat_history 索引
+-- chat_history indexes
 CREATE INDEX idx_chat_history_profile ON chat_history(profile_id);
 CREATE INDEX idx_chat_history_session_id ON chat_history(session_id);
 CREATE INDEX idx_chat_history_owner ON chat_history(owner_type, owner_id);
@@ -203,30 +203,30 @@ CREATE INDEX idx_chat_history_is_public ON chat_history(is_public);
 CREATE INDEX idx_chat_history_tags ON chat_history USING GIN(tags);
 CREATE INDEX idx_chat_history_expires_at ON chat_history(expires_at);
 
--- community_posts 索引
+-- community_posts indexes
 CREATE INDEX idx_community_posts_author_type ON community_posts(author_type);
 CREATE INDEX idx_community_posts_community_tag ON community_posts(community_tag_id);
 CREATE INDEX idx_community_posts_timestamp ON community_posts(timestamp DESC);
 CREATE INDEX idx_community_posts_tags ON community_posts USING GIN(tags);
 CREATE INDEX idx_community_posts_expires_at ON community_posts(expires_at);
 
--- community_tags 索引
+-- community_tags indexes
 CREATE INDEX idx_community_tags_name ON community_tags(name);
 
--- user_likes 索引
+-- user_likes indexes
 CREATE INDEX idx_user_likes_profile ON user_likes(profile_id);
 CREATE INDEX idx_user_likes_actor ON user_likes(actor_type, actor_id);
 CREATE INDEX idx_user_likes_target ON user_likes(target_type, target_id);
 
--- user_bookmarks 索引
+-- user_bookmarks indexes
 CREATE INDEX idx_user_bookmarks_profile ON user_bookmarks(profile_id);
 CREATE INDEX idx_user_bookmarks_actor ON user_bookmarks(actor_type, actor_id);
 
--- user_followed_communities 索引
+-- user_followed_communities indexes
 CREATE INDEX idx_user_followed_profile ON user_followed_communities(profile_id);
 CREATE INDEX idx_user_followed_actor ON user_followed_communities(actor_type, actor_id);
 
--- 第四步：启用行级安全（RLS）
+-- Step 4: enable Row Level Security (RLS)
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
@@ -239,7 +239,7 @@ ALTER TABLE user_likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_bookmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_followed_communities ENABLE ROW LEVEL SECURITY;
 
--- 第五步：创建RLS策略（Hackathon demo：允许所有访问）
+-- Step 5: create RLS policies (Hackathon demo: allow all access)
 
 -- profiles
 CREATE POLICY "Allow all access to profiles" ON profiles FOR ALL USING (true) WITH CHECK (true);
@@ -271,7 +271,7 @@ CREATE POLICY "Allow all access to user_bookmarks" ON user_bookmarks FOR ALL USI
 -- user_followed_communities
 CREATE POLICY "Allow all access to user_followed_communities" ON user_followed_communities FOR ALL USING (true) WITH CHECK (true);
 
--- 第六步：创建更新触发器
+-- Step 6: create update triggers
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -286,4 +286,4 @@ CREATE TRIGGER update_chat_sessions_updated_at BEFORE UPDATE ON chat_sessions FO
 CREATE TRIGGER update_chat_history_updated_at BEFORE UPDATE ON chat_history FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_community_posts_updated_at BEFORE UPDATE ON community_posts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 完成！
+-- Done!

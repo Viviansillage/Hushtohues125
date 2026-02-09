@@ -51,7 +51,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<
     'chat' | 'archive' | 'chat-history' | 'chat-history-detail' | 'community' | 'profile' | 'community-detail' | 'community-feed'
   >('chat');
-  const [viewingCommunityPost, setViewingCommunityPost] = useState<string | null>(null);  // ✅ 改为 postId
+  const [viewingCommunityPost, setViewingCommunityPost] = useState<string | null>(null);  // Uses postId
   const [viewingHistorySession, setViewingHistorySession] = useState<string | null>(null);
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
@@ -73,7 +73,7 @@ export default function App() {
     let isMounted = true;
     const load = async () => {
       try {
-        // ✅ 分开处理，避免 community 错误影响其他数据加载
+        // Handle separately so community errors don't block other data
         const [profileData, historyData, sessionsData] = await Promise.all([
           getProfile(),
           getHistory(),
@@ -82,7 +82,7 @@ export default function App() {
 
         if (!isMounted) return;
 
-        // Guest 无帖子时 API 返回默认名，用 localStorage 兜底
+        // When guest has no posts, API returns default name; use localStorage fallback
         let mergedProfile = profileData;
         if (profileData.isGuest && /^Guest-[a-z0-9]+$/i.test(profileData.userName)) {
           const savedName = getGuestDisplayName();
@@ -93,13 +93,13 @@ export default function App() {
         setProfile(mergedProfile);
         setHistory(historyData.map(mapHistory));
         
-        // 加载聊天会话
+        // Load chat sessions
         setChatSessions(sessionsData.map(s => ({
           ...s,
           timestamp: new Date(s.timestamp)
         })));
 
-        // ✅ Community 数据单独加载，不影响主流程
+        // Load Community data separately, does not block main flow
         try {
           const [postData, communityMeta] = await Promise.all([
             getDiscoverFeed(),
@@ -115,7 +115,7 @@ export default function App() {
           setBookmarkedPosts(communityMeta.user.bookmarks);
         } catch (communityError) {
           console.error('[App] Failed to load community data (non-blocking):', communityError);
-          // ✅ 设置默认值，避免 undefined
+          // Set defaults to avoid undefined
           setCommunityPosts([]);
           setFollowedCommunities([]);
           setRecommendedCommunities([]);
@@ -152,6 +152,17 @@ export default function App() {
       if (error instanceof Error) {
         console.error('[App] Error message:', error.message);
       }
+    }
+  }, []);
+
+  const refreshDiscoverFeed = useCallback(async () => {
+    try {
+      console.log('[App] Fetching Discover feed');
+      const postData = await getDiscoverFeed();
+      console.log('[App] Discover feed fetched:', postData.length, 'posts');
+      setCommunityPosts(postData.map(mapPost));
+    } catch (error) {
+      console.error('[App] Failed to refresh Discover feed', error);
     }
   }, []);
 
@@ -205,12 +216,7 @@ export default function App() {
       // ✅ If isPublic was changed, refresh Discover feed
       if (updates.isPublic !== undefined) {
         console.log('[App] Refreshing Discover feed after isPublic change');
-        try {
-          const postData = await getDiscoverFeed();
-          setCommunityPosts(postData.map(mapPost));
-        } catch (error) {
-          console.error('[App] Failed to refresh Discover feed:', error);
-        }
+        await refreshDiscoverFeed();
       }
     } catch (error) {
       console.error('Failed to update history', error);
@@ -237,8 +243,10 @@ export default function App() {
     }
   };
 
-  const handleDeleteHistory = (id: string) => {
+  const handleDeleteHistory = async (id: string) => {
     setHistory((prev) => prev.filter((item) => item.id !== id));
+    // After deleting a canvas, ensure Discover feed reflects removal
+    await refreshDiscoverFeed();
   };
 
   const handleToggleLike = async (postId: string) => {
@@ -282,7 +290,7 @@ export default function App() {
       console.log('[App] Community followed successfully:', community.name);
     } catch (error) {
       console.error('Failed to follow community', error);
-      // 失败时也尝试刷新，确保 UI 与 DB 一致
+      // On failure, still try refresh to keep UI in sync with DB
       await refreshCommunityMeta();
     }
   };
@@ -295,7 +303,7 @@ export default function App() {
       console.log('[App] Community unfollowed successfully:', name);
     } catch (error) {
       console.error('Failed to unfollow community', error);
-      // 失败时也尝试刷新，确保 UI 与 DB 一致
+      // On failure, still try refresh to keep UI in sync with DB
       await refreshCommunityMeta();
     }
   };
@@ -305,10 +313,9 @@ export default function App() {
       const updated = await updateProfile(payload);
       setProfile(updated);
       console.log('[App] Profile updated successfully:', updated.userName);
-      // 刷新 Discover 列表，使改名后作者名立即更新
+      // Refresh Discover list so author name updates after rename
       try {
-        const postData = await getDiscoverFeed();
-        setCommunityPosts(postData.map(mapPost));
+        await refreshDiscoverFeed();
       } catch (e) {
         console.error('[App] Failed to refresh Discover after profile update:', e);
       }
@@ -351,7 +358,7 @@ export default function App() {
         {showLanding && <LandingPage onEnter={() => setShowLanding(false)} />}
       </AnimatePresence>
 
-      {/* SVG Filters for hand-drawn effect；x/y/width/height 限制输出在源图内，避免滤镜溢出产生下方灰条 */}
+      {/* SVG Filters for hand-drawn effect; x/y/width/height limit output to avoid filter overflow gray bar */}
       <svg style={{ position: 'absolute', width: 0, height: 0 }}>
         <defs>
           <filter id="hand-drawn" x="0" y="0" width="100%" height="100%">
@@ -519,8 +526,9 @@ export default function App() {
             <button
               onClick={() => {
                 setCurrentPage('community');
-                // 切换到 Community 时刷新数据
+                // Refresh data when switching to Community
                 refreshCommunityMeta();
+                refreshDiscoverFeed();
               }}
               className={`w-full flex items-center gap-3 px-4 py-3 transition-all sketch-btn hand-drawn-border group ${
                 currentPage === 'community' ? 'bg-[#e8e4d9]' : 'bg-transparent hover:bg-[#f0ece1]'
@@ -606,7 +614,7 @@ export default function App() {
             <ChatHistoryPage
               sessions={chatSessions}
               onSelectSession={(sessionId) => {
-                // 跳转到只读的历史详情页，不覆盖当前chat状态
+                // Navigate to read-only history detail, don't overwrite current chat state
                 setViewingHistorySession(sessionId);
                 setCurrentPage('chat-history-detail');
               }}

@@ -1,11 +1,11 @@
 import { supabase, getActor, uploadImageToStorage } from './supabase.js';
 
 /**
- * 若 imageUrl 为 data URL，上传到 Supabase 并返回 http 公链；否则原样返回
+ * If imageUrl is data URL, upload to Supabase and return http URL; otherwise return as-is
  * @param {object} artifact - { type, data: { imageUrl, ... } }
  * @param {object} actor - { type, id }
  * @param {string} sessionId
- * @returns {Promise<object>} artifact（imageUrl 已替换为 http URL）
+ * @returns {Promise<object>} artifact (imageUrl replaced with http URL)
  */
 async function ensureImageUrlIsPublic(artifact, actor, sessionId) {
   if (artifact?.type !== 'image' || !artifact?.data) return artifact;
@@ -39,10 +39,10 @@ async function ensureImageUrlIsPublic(artifact, actor, sessionId) {
   return artifact;
 }
 
-/** 图片固定宽度，高度按宽高比计算 */
+/** Fixed image width, height by aspect ratio */
 const FIXED_IMAGE_WIDTH = 400;
 
-/** 提取文本第一句（到句号/问号/叹号/换行或前 50 字） */
+/** Extract first sentence (to period/question/exclamation/newline or first 50 chars) */
 function getFirstSentence(text) {
   if (!text || typeof text !== 'string') return '';
   const s = String(text).trim();
@@ -50,25 +50,25 @@ function getFirstSentence(text) {
   return (match[0] || s).trim().substring(0, 50);
 }
 
-/** 根据 imageWidth/imageHeight 计算图片 item 高度，无则用默认 */
+/** Compute image item height from imageWidth/imageHeight, default if missing */
 function getImageItemHeight(artifactData) {
   const w = artifactData?.imageWidth;
   const h = artifactData?.imageHeight;
   if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
     const computed = Math.round(FIXED_IMAGE_WIDTH * (h / w));
-    return Math.max(100, Math.min(800, computed)); // 限制 100~800
+    return Math.max(100, Math.min(800, computed)); // Clamp 100~800
   }
-  return 300; // 默认
+  return 300; // default
 }
 
 /**
- * 清理 Mermaid 代码中的嵌套括号
+ * Clean nested parentheses in Mermaid code
  */
 function cleanMermaidCode(code) {
   if (!code || typeof code !== 'string') return code;
 
   return code.replace(/\(\(([\s\S]*?)\)\)/g, (_, inner) => {
-    // 把内部所有英文括号替换为全角，避免 Mermaid 解析冲突
+    // Replace inner parentheses with fullwidth to avoid Mermaid parse conflict
     const safe = inner
       .replace(/\(/g, '（')
       .replace(/\)/g, '）');
@@ -77,19 +77,19 @@ function cleanMermaidCode(code) {
 }
 
 /**
- * 估算文本高度
- * @param {string} text - 文本内容
- * @returns {number} 估算的高度（像素）
+ * Estimate text height
+ * @param {string} text - Text content
+ * @returns {number} Estimated height (px)
  */
 function estimateTextHeight(text) {
   if (!text) return 120;
   
   const lines = text.split('\n').length;
-  const avgCharsPerLine = 40;  // ✅ 减少到40（更保守）
+  const avgCharsPerLine = 40;  // Conservative
   const wrappedLines = Math.ceil(text.length / avgCharsPerLine);
   const totalLines = Math.max(lines, wrappedLines);
   
-  // ✅ 每行56px（增加），padding 80px（增加），再乘以1.1安全系数
+  // 56px per line, 80px padding, 1.1 safety factor
   const baseHeight = totalLines * 56 + 80;
   const estimatedHeight = Math.max(Math.ceil(baseHeight * 1.1), 120);
   
@@ -107,7 +107,7 @@ function estimateTextHeight(text) {
 
 /**
  * Archive Save API
- * 实现同一session只有一个archive记录，多次保存append到同一记录
+ * One archive per session, append on multiple saves
  */
 export default async function handler(req, res) {
   // CORS
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
   const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
   const action = searchParams.get('action');
 
-  // POST /api/archive/save - 保存artifact到archive（append模式）
+  // POST /api/archive/save - Save artifact to archive (append mode)
   if (req.method === 'POST' && (action === 'save' || req.url.includes('/save'))) {
     try {
       const body = await parseBody(req);
@@ -137,7 +137,7 @@ export default async function handler(req, res) {
       }
 
       const actor = getActor(req);
-      // [DEBUG] 记录收到的 artifact.imageUrl 情况
+      // [DEBUG] Log incoming artifact.imageUrl
       const rawImageUrl = artifact?.data?.imageUrl || artifact?.data?.url;
       const imageUrlType = !rawImageUrl ? 'null/undefined' : rawImageUrl.startsWith('data:') ? 'data-url' : rawImageUrl.startsWith('http') ? 'http-url' : 'other';
       console.log('[Archive DEBUG] Incoming artifact:', {
@@ -148,7 +148,7 @@ export default async function handler(req, res) {
         hasData: !!artifact?.data
       });
 
-      // ✅ Step 0: 若 imageUrl 为 data URL，上传到 Supabase 并替换为 http 公链（根因修复）
+      // Step 0: If imageUrl is data URL, upload to Supabase and replace with http URL
       const artifactWithPublicUrl = await ensureImageUrlIsPublic(artifact, actor, sessionId);
       const effectiveArtifact = artifactWithPublicUrl || artifact;
       const effectiveImageUrl = effectiveArtifact?.data?.imageUrl || effectiveArtifact?.data?.url;
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
         preview: effectiveImageUrl ? effectiveImageUrl.substring(0, 100) : null
       });
 
-      // ✅ Step 1: 查找同一session的archive记录
+      // Step 1: Find archive for same session
       const { data: existingArchive, error: findError } = await supabase
         .from('chat_history')
         .select('*')
@@ -175,14 +175,14 @@ export default async function handler(req, res) {
         });
       }
 
-      // Step 2: 获取session的messages生成title
+      // Step 2: Get session messages for title
       const { data: sessionMessages } = await supabase
         .from('chat_messages')
         .select('*')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true });
 
-      // message_count: 优先用 chat_messages，空时 fallback 到 chat_sessions.message_count
+      // message_count: prefer chat_messages, fallback to chat_sessions.message_count
       let messageCount = sessionMessages?.length || 0;
       if (messageCount === 0) {
         const { data: sessionRow } = await supabase
@@ -193,13 +193,13 @@ export default async function handler(req, res) {
         messageCount = sessionRow?.message_count ?? 0;
       }
       
-      // ✅ 使用artifact的summary作为lastMessage的fallback
+      // Use artifact summary as lastMessage fallback
       const artifactSummary = artifact.data?.summary || '';
       const lastMessage = sessionMessages?.[sessionMessages.length - 1]?.text 
         || artifactSummary 
         || `Saved ${artifact.type}`;
 
-      // Step 3: 准备artifact数据（追加）
+      // Step 3: Prepare artifact data (append)
       const newArtifactEntry = {
         type: effectiveArtifact.type,
         data: effectiveArtifact.data,
@@ -207,13 +207,13 @@ export default async function handler(req, res) {
       };
 
       if (existingArchive) {
-        // ✅ 已存在：append到artifacts数组
+        // Exists: append to artifacts array
         console.log('[Archive Save] Appending to existing archive:', existingArchive.id);
         
         const currentArtifacts = existingArchive.content_json?.artifacts || [];
         const updatedArtifacts = [...currentArtifacts, newArtifactEntry];
         
-        // 更新 preview_images：提取图片 URL（已通过 ensureImageUrlIsPublic 转为 http）
+        // Update preview_images: extract image URLs (ensureImageUrlIsPublic converts to http)
         const currentPreviews = existingArchive.preview_images || [];
         let newImageUrl = effectiveArtifact.type === 'image' ? effectiveArtifact.data?.imageUrl || effectiveArtifact.data?.url : null;
         const updatedPreviews = newImageUrl && !currentPreviews.includes(newImageUrl)
@@ -221,28 +221,28 @@ export default async function handler(req, res) {
           : currentPreviews;
         console.log('[Archive DEBUG] Update branch - preview_images:', { newImageUrl: !!newImageUrl, count: updatedPreviews.length });
 
-        // ========== 自动生成新元素的位置信息 ==========
+        // Auto-generate position for new elements
         const currentItems = existingArchive.content_json?.items || [];
         
-        // 固定高度配置（作为 fallback）
+        // Fixed height config (fallback)
         const FIXED_HEIGHTS = {
           image: 300,
           mindmap: 280
         };
         
-        // 遍历计算最大底部位置
-        let maxBottom = 160;  // 默认起始位置
+        // Compute max bottom position
+        let maxBottom = 160;  // Default start
         currentItems.forEach(item => {
           let itemHeight;
           
           if (typeof item.height === 'number') {
-            // 已有真实高度
+            // Has real height
             itemHeight = item.height;
           } else if (item.height === 'auto' && item.type === 'text' && item.content) {
-            // height为'auto'的text，重新估算
+            // Re-estimate text with height auto
             itemHeight = estimateTextHeight(item.content);
           } else {
-            // 其他情况使用固定高度
+            // Use fixed height otherwise
             itemHeight = FIXED_HEIGHTS[item.type] || 300;
           }
           
@@ -252,10 +252,10 @@ export default async function handler(req, res) {
           }
         });
         
-        // 新元素放在最下面 + 60px 间距（不重叠前提下尽量紧凑）
+        // New element at bottom + 60px gap
         const newY = maxBottom + 60;
         
-        // 确定新元素的 ID
+        // Determine new element ID
         let newId;
         if (effectiveArtifact.type === 'image') {
           const imageCount = currentItems.filter(i => i.type === 'image').length;
@@ -269,7 +269,7 @@ export default async function handler(req, res) {
         
         const newItems = [];
         
-        // 创建 artifact item（左侧：图片或脑图）
+        // Create artifact item (left: image or mindmap)
         const newItem = {
           id: newId,
           type: effectiveArtifact.type,
@@ -295,7 +295,7 @@ export default async function handler(req, res) {
         
         newItems.push(newItem);
         
-        // 创建对应的 text item（右侧：summary/lastMessage）
+        // Create text item (right: summary/lastMessage)
         const textContent = effectiveArtifact.data?.summary || lastMessage || '';
         if (textContent.trim()) {
           const textCount = currentItems.filter(i => i.type === 'text').length;
@@ -306,7 +306,7 @@ export default async function handler(req, res) {
             id: `txt-${textCount}`,
             type: 'text',
             content: textContent,
-            x: 520,  // 右侧位置
+            x: 520,  // Right position
             y: newY,
             width: 400,
             height: textHeight,
@@ -324,7 +324,7 @@ export default async function handler(req, res) {
           totalItems: updatedItems.length
         });
 
-        // ✅ 保留原有的 last_message，不要用新artifact覆盖
+        // Keep original last_message, do not overwrite with new artifact
         const preservedLastMessage = existingArchive.last_message || lastMessage.substring(0, 200);
 
         const { data: updated, error: updateError } = await supabase
@@ -333,12 +333,12 @@ export default async function handler(req, res) {
             message_count: messageCount,
             last_message: preservedLastMessage,
             content_json: {
-              ...existingArchive.content_json,  // ✅ 保留所有字段（savedMessages等）
+              ...existingArchive.content_json,  // Keep all fields (savedMessages etc)
               artifacts: updatedArtifacts,
               items: updatedItems,
               sessionId
             },
-            preview_images: updatedPreviews,  // ✅ 更新图片预览
+            preview_images: updatedPreviews,
             updated_at: new Date().toISOString()
           })
           .eq('id', existingArchive.id)
@@ -372,10 +372,10 @@ export default async function handler(req, res) {
         });
 
       } else {
-        // ✅ 不存在：创建新archive
+        // Not exists: create new archive
         console.log('[Archive Save] Creating new archive for session:', sessionId);
 
-        // ✅ 生成title：artifact.title 优先，其次 artifact.summary，若首个存储是文本则用文本第一句
+        // Generate title: artifact.title first, then artifact.summary, else first sentence
         const artifactTitle = (effectiveArtifact.data?.title || '').trim();
         const artifactSummary = (effectiveArtifact.data?.summary || '').trim();
         const userMessages = sessionMessages?.filter(m => m.sender === 'user') || [];
@@ -386,12 +386,12 @@ export default async function handler(req, res) {
           getFirstSentence(firstUserMsg)
         ).trim() || `Saved ${effectiveArtifact.type} - ${new Date().toLocaleString()}`;
         
-        // 提取图片预览：已通过 ensureImageUrlIsPublic 转为 http
+        // Extract image preview (ensureImageUrlIsPublic converts to http)
         let previewImages = (effectiveArtifact.type === 'image' && (effectiveArtifact.data?.imageUrl || effectiveArtifact.data?.url))
           ? [effectiveArtifact.data.imageUrl || effectiveArtifact.data.url]
           : [];
 
-        // ========== 为第一个元素生成初始位置 ==========
+        // Generate initial position for first element
         const FIXED_HEIGHTS = {
           image: 300,
           mindmap: 280,
@@ -399,9 +399,9 @@ export default async function handler(req, res) {
         };
         
         const initialItems = [];
-        let currentY = 160;  // 第一个元素起始位置
+        let currentY = 160;  // First element start
         
-        // 创建 artifact item（左侧：图片或脑图）
+        // Create artifact item (left: image or mindmap)
         const firstItem = {
           id: effectiveArtifact.type === 'image' ? 'img-0' : (effectiveArtifact.type === 'mindmap' ? 'mindmap-0' : 'item-0'),
           type: effectiveArtifact.type,
@@ -427,13 +427,13 @@ export default async function handler(req, res) {
         
         initialItems.push(firstItem);
         
-        // 若 previewImages 仍为空，从 image item 的 content 提取
+        // If previewImages empty, extract from image item content
         if (previewImages.length === 0 && firstItem.type === 'image' && firstItem.content) {
           previewImages = [firstItem.content];
         }
         console.log('[Archive DEBUG] Create branch - preview_images:', { count: previewImages.length, first: previewImages[0]?.substring(0, 80) });
         
-        // 创建对应的 text item（右侧：summary/lastMessage）
+        // Create text item (right: summary/lastMessage)
         const textContent = effectiveArtifact.data?.summary || lastMessage || '';
         if (textContent.trim()) {
           const textHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
@@ -443,7 +443,7 @@ export default async function handler(req, res) {
             id: 'txt-0',
             type: 'text',
             content: textContent,
-            x: 520,  // 右侧位置
+            x: 520,  // Right position
             y: currentY,
             width: 400,
             height: textHeight,
@@ -472,7 +472,7 @@ export default async function handler(req, res) {
               sessionId
             },
             tags: [],
-            preview_images: previewImages,  // ✅ 添加预览图
+            preview_images: previewImages,
             is_public: false
           })
           .select()
@@ -481,10 +481,10 @@ export default async function handler(req, res) {
         if (createError) {
           console.error('[Archive Save] Create error:', createError);
           
-          // 如果是唯一约束冲突（并发），重试一次update
+          // If unique constraint conflict, retry as update
           if (createError.code === '23505') {
             console.log('[Archive Save] Unique constraint conflict, retrying as update...');
-            // 递归重试（会进入update分支）
+            // Recursive retry (enters update branch)
             return handler(req, res);
           }
 
@@ -523,7 +523,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // POST /api/archive?action=saveMessage - 保存消息（统一入口）
+  // POST /api/archive?action=saveMessage - Save message (unified entry)
   if (req.method === 'POST' && action === 'saveMessage') {
     try {
       const body = await parseBody(req);
@@ -546,10 +546,10 @@ export default async function handler(req, res) {
         textLength: messageText.length
       });
 
-      // ✅ 若 imageUrl 为 data URL，先上传到 Supabase 转为 http
+      // If imageUrl is data URL, upload to Supabase first
       const effectiveArtifact = artifact ? await ensureImageUrlIsPublic(artifact, actor, sessionId) : null;
 
-      // ✅ 获取 message_count（与 save 流程一致）
+      // Get message_count (same as save flow)
       const { data: sessionMessages } = await supabase
         .from('chat_messages')
         .select('*')
@@ -565,7 +565,7 @@ export default async function handler(req, res) {
         messageCount = sessionRow?.message_count ?? 0;
       }
 
-      // 查找该session的archive
+      // Find archive for session
       const { data: existingArchive, error: findError } = await supabase
         .from('chat_history')
         .select('*')
@@ -586,7 +586,7 @@ export default async function handler(req, res) {
       const currentItems = existingArchive?.content_json?.items || [];
       const savedMessages = existingArchive?.content_json?.savedMessages || [];
       
-      // 检查是否已保存过
+      // Check if already saved
       if (savedMessages.includes(messageId)) {
         console.log('[Archive SaveMessage] Message already saved:', messageId);
         return res.json({
@@ -596,25 +596,25 @@ export default async function handler(req, res) {
         });
       }
 
-      // 固定高度配置
+      // Fixed height config
       const FIXED_HEIGHTS = {
         image: 300,
         mindmap: 280
       };
 
-      // 计算最大底部位置
+      // Compute max bottom position
       let maxBottom = 160;
       currentItems.forEach(item => {
         let itemHeight;
         
         if (typeof item.height === 'number') {
-          // 已有真实高度
+          // Has real height
           itemHeight = item.height;
         } else if (item.height === 'auto' && item.type === 'text' && item.content) {
-          // height为'auto'的text，重新估算
+          // Re-estimate text height when height is 'auto'
           itemHeight = estimateTextHeight(item.content);
         } else {
-          // 其他情况使用固定高度
+          // Use fixed height otherwise
           itemHeight = FIXED_HEIGHTS[item.type] || 300;
         }
         
@@ -628,7 +628,7 @@ export default async function handler(req, res) {
       const newItems = [];
 
       if (effectiveArtifact) {
-        // 有artifact：保存artifact + summary文本
+        // Has artifact: save artifact + summary text
         if (effectiveArtifact.type === 'image') {
           const imageUrl = effectiveArtifact.data?.imageUrl || effectiveArtifact.data?.url;
           const imageCount = currentItems.filter(i => i.type === 'image').length;
@@ -666,7 +666,7 @@ export default async function handler(req, res) {
           });
         }
 
-        // 添加summary文本（右侧）
+        // Add summary text (right)
         const summaryText = effectiveArtifact.data?.summary || messageText;
         if (summaryText.trim()) {
           const textCount = currentItems.filter(i => i.type === 'text').length;
@@ -686,7 +686,7 @@ export default async function handler(req, res) {
           });
         }
       } else {
-        // 无artifact：只保存消息文本（更宽）
+        // No artifact: save message text only (wider)
         const textCount = currentItems.filter(i => i.type === 'text').length;
         const textHeight = (typeof measuredHeight === 'number' && measuredHeight > 0)
           ? measuredHeight
@@ -697,7 +697,7 @@ export default async function handler(req, res) {
           content: messageText,
           x: 60,
           y: newY,
-          width: 600,  // ← 更宽
+          width: 600,  // Wider
           height: textHeight,
           zIndex: currentItems.length + 1,
           messageId
@@ -707,7 +707,7 @@ export default async function handler(req, res) {
       const updatedItems = [...currentItems, ...newItems];
       const updatedSavedMessages = [...savedMessages, messageId];
 
-      // ✅ 提取首图 URL 与 artifacts 条目（供 HistoryPage 首图与详情使用）
+      // Extract cover image URL and artifacts (for HistoryPage)
       const currentPreviews = existingArchive?.preview_images || [];
       let newPreviewImages = currentPreviews;
       const currentArtifacts = existingArchive?.content_json?.artifacts || [];
@@ -738,7 +738,7 @@ export default async function handler(req, res) {
       });
 
       if (existingArchive) {
-        // 更新现有archive
+        // Update existing archive
         const { data: updated, error: updateError } = await supabase
           .from('chat_history')
           .update({
@@ -774,7 +774,7 @@ export default async function handler(req, res) {
           itemsAdded: newItems.length
         });
       } else {
-        // 创建新archive：artifact.title 优先，其次 artifact.summary，若首个存储是文本则用文本第一句
+        // Create new archive: prefer artifact.title, then artifact.summary, else first sentence of text
         const artifactTitle = (effectiveArtifact?.data?.title || '').trim();
         const artifactSummary = (effectiveArtifact?.data?.summary || '').trim();
         const genericPattern = /^(image|mindmap|save) created successfully$/i;
@@ -837,7 +837,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // GET /api/archive?action=getSavedMessages - 获取已保存的消息ID列表
+  // GET /api/archive?action=getSavedMessages - Get list of saved message IDs
   if (req.method === 'GET' && action === 'getSavedMessages') {
     const sessionId = searchParams.get('sessionId');
     if (!sessionId) {

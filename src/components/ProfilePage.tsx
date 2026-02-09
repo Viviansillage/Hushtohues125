@@ -41,9 +41,9 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
   }, [profile]);
 
   /**
-   * 验证昵称格式
-   * - 3-20 字符
-   * - 只允许字母、数字、下划线
+   * Validate nickname format
+   * - 3-20 chars
+   * - Letters, numbers, underscore only
    */
   const validateName = (name: string): { valid: boolean; error?: string } => {
     const trimmed = name.trim();
@@ -79,7 +79,7 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
       return;
     }
     
-    // ✅ 验证昵称格式
+    // Validate nickname format
     const validation = validateName(trimmed);
     if (!validation.valid) {
       setNameError(validation.error || 'Invalid name');
@@ -91,7 +91,7 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
       setNameError('');
       const newHandle = '@' + trimmed.toLowerCase().replace(/\s+/g, '');
       await onUpdateProfile({ userName: trimmed, userHandle: newHandle });
-      setGuestDisplayName(trimmed);  // localStorage 兜底，供无帖子时使用
+      setGuestDisplayName(trimmed);  // localStorage fallback for guests with no posts
       setIsEditingName(false);
       toast.success('Profile updated!', { className: 'handwritten font-bold' });
     } catch (error) {
@@ -283,7 +283,7 @@ export function ProfilePage({ profile, onUpdateProfile }: ProfilePageProps) {
                     value={tempUserName}
                     onChange={(e) => {
                       setTempUserName(e.target.value);
-                      setNameError(''); // 清除错误当用户输入
+                      setNameError(''); // Clear error when user types
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveName();

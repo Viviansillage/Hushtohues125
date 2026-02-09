@@ -35,7 +35,7 @@ export interface CommunityTag {
     postsToday: number;
   };
   trending: string[];
-  /** 分区创建时间 (ISO string)，用于展示 "Created MMM YYYY" */
+  /** Community creation time (ISO string) for "Created MMM YYYY" display */
   createdAt?: string | null;
 }
 
@@ -250,7 +250,7 @@ export function CommunityPage({
                             key={community.name}
                             className="p-3 hover:bg-[#e8e4d9]/50 flex items-center justify-between group transition-colors cursor-pointer border-b border-[#1a1a1a]/5 last:border-0"
                             onClick={() => {
-                                // TODO: 改为筛选 Discover 列表，而不是跳转详情页
+                                // TODO: Filter Discover list instead of navigating to detail
                                 // if (onNavigateToCommunity) onNavigateToCommunity(community.name);
                             }}
                           >
@@ -461,7 +461,7 @@ export function CommunityPage({
                               className="px-2 py-1 border-[1.5px] border-[#1a1a1a] text-xs font-bold hand-drawn-border bg-white hover:bg-[#e8e4d9] transition-colors uppercase tracking-wide"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // TODO: 改为筛选 Discover 列表
+                                // TODO: Filter Discover list
                                 // if (onNavigateToCommunity) onNavigateToCommunity(tag);
                               }}
                             >

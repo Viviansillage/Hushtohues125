@@ -67,7 +67,7 @@ node supabase/migrate-data.js  # Optional: migrate test data
 npm run dev
 ```
 
-Visit http://localhost:3000。完整 API 需部署到 Vercel 后使用；本地仅前端，或可运行 `node local-dev-server.js`（端口 3001）模拟部分 API。
+Visit http://localhost:3000. Full API requires Vercel deployment; locally only frontend runs, or run `node local-dev-server.js` (port 3001) to simulate part of the API.
 
 ---
 
@@ -125,7 +125,7 @@ vercel --prod
 ```bash
 git pull              # Always pull first
 # Make changes...
-npm run dev          # Test locally (API 需部署到 Vercel 或本地运行 local-dev-server.js)
+npm run dev          # Test locally (API must be deployed to Vercel or run local-dev-server.js)
 git add .
 git commit -m "feat: description"
 git push             # Vercel auto-deploys

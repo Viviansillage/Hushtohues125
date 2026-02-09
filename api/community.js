@@ -29,12 +29,12 @@ export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
     
-    // ========== 路由 1: /api/community/like ==========
+    // ========== Route 1: /api/community/like ==========
     if (pathname.includes('/like')) {
       return handleLike(req, res);
     }
     
-    // ========== 路由 2: /api/community (主路由，统一使用 query 参数) ==========
+    // ========== Route 2: /api/community (main route, use query params) ==========
     const discover = url.searchParams.get('discover');
     const posts = url.searchParams.get('posts');
     const action = url.searchParams.get('action');
@@ -42,12 +42,12 @@ export default async function handler(req, res) {
     const communityName = url.searchParams.get('community');
     const sessionId = url.searchParams.get('sessionId');
     
-    // ========== GET: action=detail (社区详情 - Reference-Only 模式) ==========
+    // ========== GET: action=detail (community detail - Reference-Only) ==========
     if (req.method === 'GET' && action === 'detail') {
       const postId = url.searchParams.get('postId');
       const sessionId = url.searchParams.get('sessionId');
       
-      // ✅ 兼容两种参数
+      // Compatible with both params
       if (postId) {
         return handleCommunityDetailByPostId(req, res, postId);
       } else if (sessionId) {
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
         }
         
         try {
-          // 1. 查找或创建 community_tag
+          // 1. Find or create community_tag
           let { data: tag, error: tagError } = await supabase
             .from('community_tags')
             .select('id, member_count')
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
             tag = newTag;
           }
           
-          // 2. Upsert 关注记录（幂等）
+          // 2. Upsert follow record (idempotent)
           const { error: upsertError } = await supabase
             .from('user_followed_communities')
             .upsert(
@@ -116,20 +116,20 @@ export default async function handler(req, res) {
           
           if (upsertError) throw upsertError;
           
-          // 3. 更新 member_count（如果是新关注）
+          // 3. Update member_count (if new follow)
           await supabase
             .from('community_tags')
             .update({ member_count: (tag.member_count || 0) + 1 })
             .eq('id', tag.id);
           
-          // 4. 返回最新数据
+          // 4. Return latest data
           const meta = await getCommunityMeta(req);
           return res.status(200).json(meta);
         } catch (error) {
           console.error('Follow community error:', error);
           return res.status(500).json({ 
             error: 'Failed to follow community',
-            details: error.message // 开发环境详细错误
+            details: error.message // Dev env detailed error
           });
         }
       }
@@ -144,7 +144,7 @@ export default async function handler(req, res) {
         }
         
         try {
-          // 1. 查找 community_tag
+          // 1. Find community_tag
           const { data: tag, error: tagError } = await supabase
             .from('community_tags')
             .select('id, member_count')
@@ -156,12 +156,12 @@ export default async function handler(req, res) {
           }
           
           if (!tag) {
-            // Tag 不存在，已经是未关注状态
+            // Tag not found, already unfollowed
             const meta = await getCommunityMeta(req);
             return res.status(200).json(meta);
           }
           
-          // 2. 删除关注记录
+          // 2. Delete follow record
           const { error: deleteError } = await supabase
             .from('user_followed_communities')
             .delete()
@@ -171,7 +171,7 @@ export default async function handler(req, res) {
           
           if (deleteError) throw deleteError;
           
-          // 3. 更新 member_count
+          // 3. Update member_count
           if (tag.member_count > 0) {
             await supabase
               .from('community_tags')
@@ -179,7 +179,7 @@ export default async function handler(req, res) {
               .eq('id', tag.id);
           }
           
-          // 4. 返回最新数据
+          // 4. Return latest data
           const meta = await getCommunityMeta(req);
           return res.status(200).json(meta);
         } catch (error) {
@@ -193,7 +193,7 @@ export default async function handler(req, res) {
       
       // /api/community?action=bookmark&postId=xxx
       if (action === 'bookmark' && postId) {
-        // Mock: 返回收藏状态
+        // Mock: return bookmark state
         return res.status(200).json({ bookmarked: true });
       }
       
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
         const actor = getActor(req);
         
         try {
-          // 1. 查找或创建 community_tag
+          // 1. Find or create community_tag
           let { data: tag, error: tagError } = await supabase
             .from('community_tags')
             .select('id, member_count')
@@ -224,7 +224,7 @@ export default async function handler(req, res) {
             tag = newTag;
           }
           
-          // 2. 检查是否已 joined
+          // 2. Check if already joined
           const { data: existing, error: checkError } = await supabase
             .from('user_followed_communities')
             .select('id')
@@ -241,7 +241,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ joined: true, alreadyJoined: true });
           }
           
-          // 3. Upsert join 记录（幂等）
+          // 3. Upsert join record (idempotent)
           const { error: upsertError } = await supabase
             .from('user_followed_communities')
             .upsert(
@@ -260,7 +260,7 @@ export default async function handler(req, res) {
           
           if (upsertError) throw upsertError;
           
-          // 4. 更新 member_count
+          // 4. Update member_count
           await supabase
             .from('community_tags')
             .update({ member_count: (tag.member_count || 0) + 1 })
@@ -278,7 +278,7 @@ export default async function handler(req, res) {
     }
     
     if (req.method === 'GET') {
-      // /api/community?posts=true - 获取所有社区帖子
+      // /api/community?posts=true - Get all community posts
       if (posts === 'true' || req.url?.includes('posts')) {
         const allPosts = await getCommunityPosts();
         return res.status(200).json(allPosts);
@@ -316,15 +316,106 @@ export default async function handler(req, res) {
           return res.status(200).json([]);
         }
 
-        console.log('[Discover List] ✅ Found', publicPosts.length, 'public posts from community_posts');
+        console.log('[Discover List] ✅ Found', publicPosts.length, 'public posts from community_posts (raw)');
         
-        // ✅ Log each record for debugging
-        publicPosts.forEach((p, idx) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'api/community.js:319',
+            message: 'Discover feed loaded from community_posts (raw)',
+            data: {
+              totalPosts: publicPosts.length,
+              samplePostIds: publicPosts.slice(0, 5).map(p => p.id)
+            },
+            runId: 'pre-fix',
+            hypothesisId: 'H1',
+            timestamp: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
+
+        // Extra safety: filter out orphan posts whose archive has been deleted
+        // Hypothesis H2: there may be community_posts.is_public=true but no corresponding chat_history
+        let filteredPosts = publicPosts;
+        try {
+          const sessionIds = Array.from(
+            new Set(
+              (publicPosts || [])
+                .map(p => p.session_id)
+                .filter(Boolean)
+            )
+          );
+
+          if (sessionIds.length > 0) {
+            const { data: histories, error: historyError } = await supabase
+              .from('chat_history')
+              .select('session_id')
+              .in('session_id', sessionIds);
+
+            if (historyError) {
+              console.warn('[Discover List] ⚠️ Failed to load chat_history for orphan filter:', historyError.message);
+            } else {
+              const validSessionSet = new Set((histories || []).map(h => h.session_id));
+              const orphanSessionIds = sessionIds.filter(id => !validSessionSet.has(id));
+
+              // 1) Filter orphan posts from frontend result
+              filteredPosts = publicPosts.filter(p => validSessionSet.has(p.session_id));
+
+              // 2) Mark orphan posts as is_public=false in DB so they are not returned again
+              if (orphanSessionIds.length > 0) {
+                const { error: orphanUpdateError } = await supabase
+                  .from('community_posts')
+                  .update({ is_public: false, updated_at: new Date().toISOString() })
+                  .in('session_id', orphanSessionIds);
+
+                if (orphanUpdateError) {
+                  console.warn('[Discover List] ⚠️ Failed to unpublish orphan posts:', orphanUpdateError.message);
+                } else {
+                  console.log('[Discover List] 🧹 Orphan posts unpublished:', {
+                    orphanSessionCount: orphanSessionIds.length
+                  });
+                }
+              }
+
+              console.log('[Discover List] 🧹 Orphan filter applied:', {
+                before: publicPosts.length,
+                after: filteredPosts.length
+              });
+
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  location: 'api/community.js:341',
+                  message: 'Discover orphan filter result (with persistent unpublish)',
+                  data: {
+                    totalBefore: publicPosts.length,
+                    totalAfter: filteredPosts.length,
+                    orphanSessionCount: orphanSessionIds.length
+                  },
+                  runId: 'pre-fix',
+                  hypothesisId: 'H2',
+                  timestamp: Date.now()
+                })
+              }).catch(() => {});
+              // #endregion
+            }
+          }
+        } catch (orphanError) {
+          console.warn('[Discover List] ⚠️ Orphan filter crashed, returning raw posts:', orphanError);
+          filteredPosts = publicPosts;
+        }
+        
+        // ✅ Log each record for debugging (after orphan filter)
+        filteredPosts.forEach((p, idx) => {
           console.log(`[Discover List] [${idx}] postId=${p.id?.slice(0,8)}, session_id=${p.session_id}, author=${p.author_name || p.author_id?.slice(0,8)}`);
         });
 
         // ✅ Format response - use created_at consistently
-        const formatted = publicPosts.map(post => ({
+        const formatted = filteredPosts.map(post => ({
           id: post.id,  // ✅ community_posts.id (uuid) - ONLY valid postId
           title: post.title || 'Untitled',
           author: { 
@@ -344,7 +435,7 @@ export default async function handler(req, res) {
         return res.status(200).json(formatted);
       }
       
-      // 默认返回社区元数据
+      // Default return community meta
       const meta = await getCommunityMeta(req);
       return res.status(200).json(meta);
     }
@@ -374,7 +465,7 @@ async function handleLike(req, res) {
     }
     
     if (req.method === 'POST') {
-      // 点赞（幂等）
+      // Like (idempotent)
       const { data: existing, error: checkError } = await supabase
         .from('user_likes')
         .select('id')
@@ -491,10 +582,10 @@ async function handleLike(req, res) {
   }
 }
 
-// ========== Handler: Publish (统一路由 action=publish) ==========
+// ========== Handler: Publish (unified route action=publish) ==========
 async function handlePublish(req, res, body) {
   try {
-    const actor = getActor(req, { requireGuestId: true });  // ✅ 强制要求 guest_id
+    const actor = getActor(req, { requireGuestId: true });  // Require guest_id
     
     // ✅ CRITICAL: Enforce X-Guest-ID for all publish operations
     if (actor.error === 'MISSING_GUEST_ID' || !actor.id) {
@@ -510,7 +601,7 @@ async function handlePublish(req, res, body) {
       actor: { type: actor.type, id: actor.id?.slice(0, 8) } 
     });
     
-    // ✅ Reference-Only: 接受 sessionId/historyId 引用
+    // Reference-Only: accept sessionId/historyId
     const { sessionId, historyId } = body;
     let finalSessionId = sessionId || historyId;
     
@@ -518,12 +609,12 @@ async function handlePublish(req, res, body) {
       return res.status(400).json({ error: 'sessionId or historyId is required' });
     }
     
-    // ✅ 关键修复：如果传入的是 UUID（history.id），先解析为 session_id
+    // Key fix: if UUID (history.id), resolve to session_id first
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalSessionId);
     
     if (isUUID) {
       console.log('[handlePublish] Detected UUID, resolving to session_id...');
-      // 传入的是 chat_history.id（UUID），需要查询获取 session_id
+      // Passed chat_history.id (UUID), query for session_id
       const { data: historyById, error: resolveError } = await supabase
         .from('chat_history')
         .select('session_id, title, is_public, content_json')
@@ -542,7 +633,7 @@ async function handlePublish(req, res, body) {
       console.log('[handlePublish] Resolved UUID to session_id:', finalSessionId);
     }
     
-    // 1. 验证 session 是否存在
+    // 1. Verify session exists
     const { data: history, error: historyError } = await supabase
       .from('chat_history')
       .select('session_id, title, is_public, content_json')
@@ -554,7 +645,7 @@ async function handlePublish(req, res, body) {
       return res.status(404).json({ error: 'Archive session not found' });
     }
     
-    // ✅ 发布时同时设置 chat_history.is_public = true
+    // Set chat_history.is_public = true when publishing
     if (!history.is_public) {
       console.log('[handlePublish] Setting history.is_public to true');
       const { error: updateHistoryError } = await supabase
@@ -594,7 +685,7 @@ async function handlePublish(req, res, body) {
       console.warn('[handlePublish] Failed to update history tags:', updateTagsError);
     }
     
-    // 2. 获取 author name
+    // 2. Get author name
     let authorName = actor.name || `Guest-${actor.id.slice(-6)}`;
     if (actor.type === 'user') {
       const { data: profile } = await supabase
@@ -644,9 +735,9 @@ async function handlePublish(req, res, body) {
     
     return res.status(201).json({
       ok: true,
-      postId: data.id,      // ✅ 前端需要的 postId（community_posts.id）
-      id: data.id,          // 兼容字段
-      sessionId: data.session_id,  // 引用的 historyId
+      postId: data.id,      // postId for frontend (community_posts.id)
+      id: data.id,          // compat field
+      sessionId: data.session_id,  // referenced historyId
       timestamp: data.created_at  // ✅ Use created_at
     });
   } catch (error) {
@@ -691,7 +782,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       author: communityPost.author_name || communityPost.author_id?.slice(0, 8)
     });
 
-    // 2. 用 session_id（即 historyId）查询 history 完整数据
+    // 2. Query history by session_id (historyId)
     const historyId = communityPost.session_id;
     console.log('[CommunityDetail] Querying history with session_id:', historyId);
     
@@ -716,8 +807,8 @@ async function handleCommunityDetailByPostId(req, res, postId) {
     // If community_posts.is_public=true, the content is public regardless of history status
     // (history might be unpublished but community post remains)
 
-    // 3. 从 chat_history.content_json.artifacts 读取保存的 artifacts
-    // ✅ 修复：只显示用户 Save 的内容，与 Archive 详情保持一致
+    // 3. Read saved artifacts from chat_history.content_json.artifacts
+    // Fix: only show user Save content, match Archive detail
     const savedArtifacts = history.content_json?.artifacts || [];
     
     console.log('[CommunityDetail] Found saved artifacts:', {
@@ -725,7 +816,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       types: savedArtifacts.map(a => a.type)
     });
 
-    // 4. 查询 messages
+    // 4. Query messages
     const { data: messages, error: messagesError } = await supabase
       .from('chat_messages')
       .select('*')
@@ -736,7 +827,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       console.error('[CommunityDetail] Messages query error:', messagesError);
     }
 
-    // 5. 分区名称（用于展示与 follow 校验）及 joined
+    // 5. Partition name (for display and follow check) and joined
     let communityName = null;
     if (communityPost.community_tag_id) {
       const { data: tagRow } = await supabase
@@ -758,8 +849,8 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       joined = !!existing;
     }
 
-    // 6. 组装 canvas 数据（从 chat_history.content_json.artifacts 读取）
-    // ✅ 只包含用户 Save 的图片和 mindmap
+    // 6. Build canvas data from chat_history.content_json.artifacts
+    // Only include user Save images and mindmap
     const images = savedArtifacts
       .filter(a => a.type === 'image')
       .map(a => a.data?.imageUrl)
@@ -775,8 +866,8 @@ async function handleCommunityDetailByPostId(req, res, postId) {
 
     const canvasData = {
       postId: communityPost.id,
-      historyId: history.session_id,  // ✅ 改为 historyId
-      sessionId: history.session_id,  // 保留兼容
+      historyId: history.session_id,
+      sessionId: history.session_id,  // compat
       title: history.title || communityPost.title || 'Untitled',
       author: {
         name: communityPost.author_name || `Guest-${communityPost.author_id?.slice(0, 8) || 'Unknown'}`,
@@ -789,9 +880,9 @@ async function handleCommunityDetailByPostId(req, res, postId) {
       content: history.content_json?.content || '',
       contentJson: history.content_json || null,  // ✅ Pass complete contentJson with layout
       tags: filterSystemTags(history.tags || communityPost.tags || []),
-      communityName: communityName || null,  // ✅ 分区名称（7 个固定分区之一）
+      communityName: communityName || null,
       isPublic: true,
-      readOnly: true,  // ✅ 强制只读
+      readOnly: true,
       stats: {
         likes: communityPost.likes || 0,
         comments: communityPost.comments || 0,
@@ -833,7 +924,7 @@ async function handleCommunityDetailByPostId(req, res, postId) {
   }
 }
 
-// ========== Handler: Community Detail (Reference-Only) - 旧版本，保留兼容 ==========
+// ========== Handler: Community Detail (Reference-Only) - legacy compat ==========
 async function handleCommunityDetail(req, res, sessionId) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -850,7 +941,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       actor: { type: actor.type, id: actor.id.slice(0, 8) + '...' }
     });
     
-    // 1. 验证该 session 是否已发布为 public（含 community_tag_id 用于分区展示）
+    // 1. Verify session is published as public (incl. community_tag_id for partition)
     const { data: publicRef, error: refError } = await supabase
       .from('community_posts')
       .select('session_id, author_name, author_type, author_id, likes, comments, views, created_at, community_tag_id')
@@ -867,7 +958,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       return res.status(404).json({ error: 'Community post not found or not public' });
     }
 
-    // 2. 从 archive 查询真实数据（chat_history）
+    // 2. Query archive (chat_history)
     const { data: archive, error: archiveError } = await supabase
       .from('chat_history')
       .select('*')
@@ -879,8 +970,8 @@ async function handleCommunityDetail(req, res, sessionId) {
       return res.status(404).json({ error: 'Archive data not found' });
     }
 
-    // 3. 从 chat_history.content_json.artifacts 读取保存的 artifacts
-    // ✅ 修复：只显示用户 Save 的内容，与 Archive 详情保持一致
+    // 3. Read saved artifacts from chat_history.content_json.artifacts
+    // Fix: only show user Save content, match Archive detail
     const savedArtifacts = archive.content_json?.artifacts || [];
     
     console.log('[handleCommunityDetail] Found saved artifacts:', {
@@ -888,7 +979,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       types: savedArtifacts.map(a => a.type)
     });
 
-    // 4. 查询该 session 的所有消息
+    // 4. Query all messages for session
     const { data: messages, error: messagesError } = await supabase
       .from('chat_messages')
       .select('*')
@@ -899,7 +990,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       console.error('[handleCommunityDetail] Messages query error:', messagesError);
     }
 
-    // 5. 分区名称与 joined
+    // 5. Partition name and joined
     let communityName = null;
     if (publicRef.community_tag_id) {
       const { data: tagRow } = await supabase
@@ -921,8 +1012,8 @@ async function handleCommunityDetail(req, res, sessionId) {
       joined = !!existing;
     }
 
-    // 6. 组装 canvas 数据（从 chat_history.content_json.artifacts 读取）
-    // ✅ 只包含用户 Save 的图片和 mindmap
+    // 6. Build canvas data from chat_history.content_json.artifacts
+    // Only include user Save images and mindmap
     const images = savedArtifacts
       .filter(a => a.type === 'image')
       .map(a => a.data?.imageUrl)
@@ -936,7 +1027,7 @@ async function handleCommunityDetail(req, res, sessionId) {
         summary: a.data?.summary
       }));
 
-    // 7. 构造完整的 canvas 数据（与 ArchiveDetail 保持一致）
+    // 7. Build full canvas data (match ArchiveDetail)
     const canvasData = {
       sessionId: archive.session_id,
       title: archive.title || 'Untitled',
@@ -952,7 +1043,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       tags: filterSystemTags(archive.tags || []),
       communityName: communityName || null,
       isPublic: true,
-      readOnly: true,  // ✅ 标记为只读
+      readOnly: true,
       stats: {
         likes: publicRef.likes || 0,
         comments: publicRef.comments || 0,
@@ -961,7 +1052,7 @@ async function handleCommunityDetail(req, res, sessionId) {
       timestamp: publicRef.created_at  // ✅ Use created_at
     };
 
-    // 8. 返回数据
+    // 8. Return data
     console.log('[handleCommunityDetail] Success:', {
       sessionId,
       title: canvasData.title,

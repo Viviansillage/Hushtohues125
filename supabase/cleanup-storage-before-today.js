@@ -1,8 +1,8 @@
 /**
- * 清理 Supabase Storage 中今天之前上传的图片
- * "今天" = 太平洋时间 (America/Los_Angeles) 零点
- * 用法：npm run cleanup-storage
- * 零依赖，仅用 Node 内置模块 + Supabase REST API
+ * Clean up images in Supabase Storage that were uploaded before today.
+ * "Today" = midnight in Pacific Time (America/Los_Angeles).
+ * Usage: npm run cleanup-storage
+ * Zero external deps: Node built-ins + Supabase REST API only.
  */
 import fs from 'fs';
 import path from 'path';
@@ -37,15 +37,15 @@ const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROL
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'artifacts';
 
 if (!baseUrl || !key) {
-  console.error('缺少环境变量。');
+  console.error('Missing required environment variables.');
   if (loadedFile) {
     const keys = Object.keys(process.env).filter((k) => k.includes('SUPABASE'));
-    console.error(`已从 ${loadedFile} 加载，找到的 Supabase 相关变量: ${keys.join(', ') || '无'}`);
+    console.error(`Loaded ${loadedFile}, found Supabase-related variables: ${keys.join(', ') || 'none'}`);
   } else {
-    console.error('未找到 .env.local 或 .env 文件');
+    console.error('Could not find .env.local or .env file');
   }
-  console.error('需要: SUPABASE_URL（或 VITE_SUPABASE_URL）+ SUPABASE_SERVICE_KEY（或 VITE_SUPABASE_ANON_KEY）');
-  console.error('可选: SUPABASE_STORAGE_BUCKET（默认 artifacts，若不存在可改为 images）');
+  console.error('Required: SUPABASE_URL (or VITE_SUPABASE_URL) + SUPABASE_SERVICE_KEY (or VITE_SUPABASE_ANON_KEY)');
+  console.error('Optional: SUPABASE_STORAGE_BUCKET (default artifacts; you can change to an existing bucket like "images")');
   process.exit(1);
 }
 
@@ -63,9 +63,9 @@ function getPacificMidnightTodayMs() {
 }
 const todayStartMs = getPacificMidnightTodayMs();
 
-// [DEBUG] 打印"今天"的边界，便于排查是否误删今日文件
+// [DEBUG] Print the boundary of "today" to help debug accidental deletions
 const todayStr = new Date(todayStartMs).toISOString();
-console.log('[DEBUG] "今天"起点(太平洋零点):', todayStr, 'timestamp:', todayStartMs);
+console.log('[DEBUG] "Today" start (Pacific midnight):', todayStr, 'timestamp:', todayStartMs);
 
 async function listAllFiles(prefix = '', files = []) {
   const url = `${baseUrl}/storage/v1/object/list/${BUCKET}`;
@@ -77,7 +77,7 @@ async function listAllFiles(prefix = '', files = []) {
   if (!res.ok) {
     const body = await res.text();
     if (body.includes('Bucket not found')) {
-      throw new Error(`Bucket "${BUCKET}" 不存在。请在 Supabase Dashboard → Storage 中创建，或设置 SUPABASE_STORAGE_BUCKET=images 等已存在的 bucket 名。`);
+      throw new Error(`Bucket "${BUCKET}" does not exist. Please create it in Supabase Dashboard → Storage, or set SUPABASE_STORAGE_BUCKET=images (or another existing bucket name).`);
     }
     throw new Error(`List failed: ${res.status} ${body}`);
   }
@@ -94,9 +94,9 @@ async function listAllFiles(prefix = '', files = []) {
 }
 
 async function main() {
-  console.log(`正在列出 ${BUCKET} bucket 中的文件...`);
+  console.log(`Listing files in bucket ${BUCKET}...`);
   const allPaths = await listAllFiles();
-  console.log(`共找到 ${allPaths.length} 个文件`);
+  console.log(`Found ${allPaths.length} files`);
 
   const toDelete = [];
   const kept = [];
@@ -111,25 +111,25 @@ async function main() {
         kept.push({ path: p, ts });
       }
     } else {
-      console.warn('[DEBUG] 跳过无法解析时间的文件:', p);
+      console.warn('[DEBUG] Skipping file with unparseable timestamp:', p);
     }
   }
 
-  // [DEBUG] 展示保留/删除的样本
+  // [DEBUG] Show samples for kept/deleted files
   if (kept.length > 0) {
-    console.log('[DEBUG] 今日保留的样本(前3个):', kept.slice(0, 3));
+    console.log('[DEBUG] Sample kept for today (first 3):', kept.slice(0, 3));
   }
   if (toDelete.length > 0) {
-    console.log('[DEBUG] 待删除的样本(前5个):', toDelete.slice(0, 5));
+    console.log('[DEBUG] Sample to delete (first 5):', toDelete.slice(0, 5));
   }
 
-  console.log(`需要删除 ${toDelete.length} 个今天之前的文件，保留 ${kept.length} 个今日文件`);
+  console.log(`Will delete ${toDelete.length} files before today, keeping ${kept.length} files from today`);
   if (toDelete.length === 0) {
-    console.log('无需删除，完成');
+    console.log('No files need deletion, done');
     return;
   }
 
-  // Supabase 单次最多删除 1000 个
+  // Supabase can delete at most 1000 objects per request
   for (let i = 0; i < toDelete.length; i += 1000) {
     const batch = toDelete.slice(i, i + 1000);
     const res = await fetch(`${baseUrl}/storage/v1/object/${BUCKET}`, {
@@ -138,13 +138,13 @@ async function main() {
       body: JSON.stringify({ prefixes: batch })
     });
     if (!res.ok) {
-      console.error('删除失败:', res.status, await res.text());
+      console.error('Delete failed:', res.status, await res.text());
       process.exit(1);
     }
-    console.log(`已删除 ${batch.length} 个文件`);
+    console.log(`Deleted ${batch.length} files`);
   }
-  console.log('全部完成，共删除', toDelete.length, '个文件');
-  console.log('[DEBUG] 本脚本仅删除 Storage 中的文件，不会修改 chat_history/chat_messages 等数据库表');
+  console.log('All done, deleted', toDelete.length, 'files in total');
+  console.log('[DEBUG] This script only deletes files in Storage; it does not modify chat_history/chat_messages or other tables');
 }
 
 main().catch((err) => {

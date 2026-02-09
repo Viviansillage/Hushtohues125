@@ -43,7 +43,7 @@ export type ApiHistoryItem = {
   isPublic: boolean;
   tags: string[];
   contentJson?: any;
-  /** 发布时传入的作者昵称，供无帖子的 guest 首次发布使用 */
+  /** Author display name for publish (used when guest has no posts yet) */
   authorDisplayName?: string;
 };
 
@@ -60,7 +60,7 @@ export type ApiCommunityPost = {
   comments: number;
   timestamp: string;
   tags: string[];
-  /** 分区名称（7 个固定分区之一），用于验证与筛选 */
+  /** Community category name (one of 7 fixed), for validation and filtering */
   communityName?: string | null;
 };
 
@@ -73,7 +73,7 @@ export type ApiCommunityTag = {
     postsToday: number;
   };
   trending: string[];
-  /** 分区在数据库中的创建时间 (ISO string)，用于展示 "Created MMM YYYY" */
+  /** Community creation time in DB (ISO string) for "Created MMM YYYY" display */
   createdAt?: string | null;
 };
 
@@ -85,15 +85,15 @@ export type ApiUserState = {
 };
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
-  // 获取 guest ID 并添加到所有请求
+  // Get guest ID and add to all requests
   const guestId = getOrCreateGuestId();
   
   const response = await fetch(url, {
     ...options,
     headers: { 
       'Content-Type': 'application/json',
-      'X-Guest-ID': guestId,  // 所有请求自动携带 guest ID
-      ...(options?.headers || {})  // 合并用户自定义 headers
+      'X-Guest-ID': guestId,  // All requests carry guest ID
+      ...(options?.headers || {})  // Merge custom headers
     }
   });
   if (!response.ok) {
@@ -126,13 +126,12 @@ export const updateHistoryItem = (id: string, payload: Partial<ApiHistoryItem>) 
 
 export const getCommunityPosts = () => request<ApiCommunityPost[]>('/api/community?posts=true');
 
-// 旧接口：指向旧的路由（如果存在），否则改用新的 /api/community/like
+// Legacy: uses new /api/community/like
 export const toggleCommunityLike = async (id: string) => {
-  // 直接调用新的点赞接口
   const result = await likePost(id);
   return { 
     liked: !result.alreadyLiked, 
-    likes: result.likes !== null ? result.likes : undefined  // 保持原始值，不转换为 0
+    likes: result.likes !== null ? result.likes : undefined  // Preserve original value, do not coerce to 0
   };
 };
 
@@ -189,7 +188,7 @@ export const getCommunityDetail = (postId: string) =>
       contentJson?: any;  // ✅ Add contentJson with layout info
       tags: string[];
       isPublic: boolean;
-      readOnly: boolean;  // ✅ 只读标记
+      readOnly: boolean;  // Read-only flag
       stats: {
         likes: number;
         comments: number;
@@ -204,7 +203,7 @@ export const getCommunityDetail = (postId: string) =>
 export const toggleCommunityJoin = (name: string) =>
   request<{ joined: boolean }>(`/api/community?action=join&community=${name}`, { method: 'POST' });
 
-// 旧接口：社区详情页的点赞，指向新接口
+// Legacy: community detail page like, uses new endpoint
 export const toggleCommunityDetailLike = async (name: string, id: string) => {
   const result = await likePost(id);
   return { 
@@ -213,14 +212,14 @@ export const toggleCommunityDetailLike = async (name: string, id: string) => {
   };
 };
 
-// 已废弃：前端自行维护 messages，不再从后端读取
+// Deprecated: frontend maintains messages, no longer reads from backend
 export const getChatMessages = (conversationId?: string) => 
-  Promise.resolve([]);  // 返回空数组
+  Promise.resolve([]);  // Return empty array
 
 /**
- * 从数据库加载会话消息（新架构）
- * @param sessionId - 会话ID
- * @returns 消息数组
+ * Load session messages from DB (new architecture)
+ * @param sessionId - Session ID
+ * @returns Message array
  */
 export const loadMessagesFromDB = async (sessionId: string): Promise<ApiChatMessage[]> => {
   try {
@@ -234,9 +233,9 @@ export const loadMessagesFromDB = async (sessionId: string): Promise<ApiChatMess
 };
 
 /**
- * 保存消息到数据库（新架构）
- * @param sessionId - 会话ID
- * @param message - 单条消息
+ * Save message to DB (new architecture)
+ * @param sessionId - Session ID
+ * @param message - Single message
  */
 export const saveMessageToDB = async (sessionId: string, message: ApiChatMessage): Promise<void> => {
   try {
@@ -247,12 +246,12 @@ export const saveMessageToDB = async (sessionId: string, message: ApiChatMessage
     console.log('[saveMessageToDB] ✅ Saved:', { sessionId, messageId: message.id });
   } catch (error) {
     console.error('[saveMessageToDB] Error:', error);
-    // 不抛出错误，静默失败
+    // Do not throw, fail silently
   }
 };
 
 export const sendChatMessage = (text: string, sessionId: string) => {
-  // 新架构：不再发送messages数组，后端从DB获取
+  // New arch: no longer send messages array, backend reads from DB
   const payload = { text, sessionId };
   const payloadStr = JSON.stringify(payload);
   const sizeKB = new Blob([payloadStr]).size / 1024;
@@ -274,8 +273,8 @@ export const sendChatMessage = (text: string, sessionId: string) => {
 };
 
 /**
- * 获取所有聊天会话列表
- * @returns 会话数组
+ * Get all chat sessions list
+ * @returns Session array
  */
 export const getChatSessions = () => request<{ 
   sessions: Array<{
@@ -297,7 +296,7 @@ export const createChatArtifact = (
   kind: string,
   sessionId: string
 ) => {
-  // 新架构：只发送kind和sessionId，后端从DB获取messages
+  // New arch: only send kind and sessionId, backend gets messages from DB
   const payload = { kind, sessionId };
   const payloadStr = JSON.stringify(payload);
   const sizeKB = new Blob([payloadStr]).size / 1024;
@@ -337,10 +336,10 @@ export const createChatArtifact = (
   });
 };
 
-// ============ Guest-first Demo 新增 API ============
+// ============ Guest-first Demo APIs ============
 
 /**
- * 保存到 Archive（Guest 也可以保存）
+ * Save to Archive (Guest can also save)
  */
 export const saveToArchive = (payload: {
   title: string;
@@ -358,12 +357,12 @@ export const saveToArchive = (payload: {
   );
 
 /**
- * 发布到 Community（Guest 也可以发布）
- * ✅ 使用统一路由 /api/community?action=publish
+ * Publish to Community (Guest can also publish)
+ * Uses unified route /api/community?action=publish
  */
 export const publishToCommunity = (payload: {
-  sessionId?: string;  // ✅ 必须：使用 sessionId 引用 archive
-  historyId?: string;  // 兼容字段
+  sessionId?: string;  // Required: use sessionId to reference archive
+  historyId?: string;  // Compat field
   title?: string;
   content?: string;
   contentJson?: any;
@@ -375,7 +374,7 @@ export const publishToCommunity = (payload: {
   assetUrls?: string[];
 }) =>
   request<{ ok: boolean; postId: string; id: string; sessionId: string; timestamp: string }>(
-    '/api/community?action=publish',  // ✅ 统一路由
+    '/api/community?action=publish',  // Unified route
     {
       method: 'POST',
       body: JSON.stringify(payload)
@@ -383,7 +382,7 @@ export const publishToCommunity = (payload: {
   );
 
 /**
- * 点赞帖子（Guest 也可以点赞，幂等）
+ * Like post (Guest can also like, idempotent)
  */
 export const likePost = (postId: string) =>
   request<{ message: string; alreadyLiked: boolean; likes: number | null }>(
@@ -395,7 +394,7 @@ export const likePost = (postId: string) =>
   );
 
 /**
- * 取消点赞
+ * Unlike post
  */
 export const unlikePost = (postId: string) =>
   request<{ message: string; likes: number | null }>(
@@ -407,8 +406,8 @@ export const unlikePost = (postId: string) =>
   );
 
 /**
- * 获取 Discover Feed（可选按分区筛选）
- * @param community - 分区名称（如 Entertainment）时只返回该分区的帖子
+ * Get Discover Feed (optionally filter by community)
+ * @param community - When set (e.g. Entertainment), returns only that community's posts
  */
 export const getDiscoverFeed = async (community?: string): Promise<ApiCommunityPost[]> => {
   try {
@@ -417,7 +416,7 @@ export const getDiscoverFeed = async (community?: string): Promise<ApiCommunityP
       : '/api/community?discover=true';
     const result = await request<ApiCommunityPost[] | { posts: ApiCommunityPost[], error?: string }>(url);
     
-    // ✅ 处理后端返回的错误格式 {posts: [], error: ...}
+    // Handle backend error format {posts: [], error: ...}
     if (result && typeof result === 'object' && 'posts' in result) {
       if (result.error) {
         console.error('[getDiscoverFeed] Backend error:', result.error);
@@ -425,11 +424,11 @@ export const getDiscoverFeed = async (community?: string): Promise<ApiCommunityP
       return result.posts || [];
     }
     
-    // 正常返回数组
+    // Return array normally
     return Array.isArray(result) ? result : [];
   } catch (error) {
     console.error('[getDiscoverFeed] Request failed:', error);
-    // ✅ 不 throw，返回空数组
+    // Do not throw, return empty array
     return [];
   }
 };

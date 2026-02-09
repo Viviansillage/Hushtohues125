@@ -1,9 +1,9 @@
 /**
- * 测量文本在 Canvas 中的实际渲染高度
- * 使用与 CanvasDetail AutoResizingTextarea 完全相同的 textarea 元素和样式进行测量
- * @param text - 文本内容
- * @param widthPx - 容器宽度（summary 用 400，纯消息用 600）
- * @returns 测量得到的高度（像素）
+ * Measure actual rendered text height in Canvas
+ * Uses same textarea element and styles as CanvasDetail AutoResizingTextarea
+ * @param text - Text content
+ * @param widthPx - Container width (400 for summary, 600 for plain message)
+ * @returns Measured height in pixels
  */
 export function measureCanvasTextHeight(text: string, widthPx: number): number {
   if (!text || typeof document === 'undefined') return 120;
@@ -12,7 +12,7 @@ export function measureCanvasTextHeight(text: string, widthPx: number): number {
   textarea.setAttribute('data-measure', 'true');
   textarea.value = text;
   textarea.readOnly = true;
-  // 与 CanvasDetail AutoResizingTextarea 完全一致
+  // Same as CanvasDetail AutoResizingTextarea
   textarea.style.cssText = `
     position: absolute;
     left: -9999px;
@@ -34,12 +34,12 @@ export function measureCanvasTextHeight(text: string, widthPx: number): number {
     box-sizing: border-box;
   `;
   document.body.appendChild(textarea);
-  // 与 AutoResizingTextarea 一样：height = scrollHeight
+  // Same as AutoResizingTextarea: height = scrollHeight
   textarea.style.height = 'auto';
   const scrollHeight = textarea.scrollHeight;
   document.body.removeChild(textarea);
-  // 加上 Canvas 文本项父容器的 pt-2 pb-2 (8px + 8px = 16px)
+  // Add pt-2 pb-2 (8px + 8px = 16px) from Canvas text item parent
   const total = Math.ceil(scrollHeight + 16);
-  // 保守加一点余量，避免字体/子像素差异导致轻微重叠
+  // Add small margin to avoid overlap from font/subpixel differences
   return Math.ceil(total * 1.05);
 }

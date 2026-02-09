@@ -22,10 +22,10 @@ export interface CanvasItem {
     title?: string;
     items?: DraggableItem[];
     timestamp?: string;
-    savedMessages?: string[];  // ← 新增：记录已保存的消息ID
-    sessionId?: string;        // ← 新增：保留sessionId
-    artifacts?: any[];         // ← 新增：保留artifacts
-    [key: string]: any;        // ← 新增：允许其他字段
+    savedMessages?: string[];  // Saved message IDs
+    sessionId?: string;        // Session ID
+    artifacts?: any[];         // Artifacts
+    [key: string]: any;        // Other fields
   };
 }
 
@@ -39,7 +39,7 @@ export interface DraggableItem {
   height: number | string;
   zIndex: number;
   meta?: { title?: string; summary?: string };
-  /** 来自 Chat 保存时写入，删除时用于从 savedMessages 移除 */
+  /** Written when saving from Chat; used to remove from savedMessages on delete */
   messageId?: string;
 }
 
@@ -102,14 +102,14 @@ const AutoResizingTextarea = ({ item, onChange, readOnly }: { item: DraggableIte
   
   useLayoutEffect(() => {
     if (textareaRef.current) {
-      // 保存当前光标位置
+      // Save current caret position
       const selectionStart = textareaRef.current.selectionStart;
       const selectionEnd = textareaRef.current.selectionEnd;
       
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
       
-      // 恢复光标位置
+      // Restore caret position
       if (document.activeElement === textareaRef.current) {
         textareaRef.current.setSelectionRange(selectionStart, selectionEnd);
       }
@@ -373,9 +373,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [savedMessages, setSavedMessages] = useState<string[]>(() => item.contentJson?.savedMessages ?? []);
   const containerRef = useRef<HTMLDivElement>(null);
-  const savedStateRef = useRef<string>(''); // 用于比较是否有修改
-  const scrollRestoreRef = useRef<number | null>(null); // 拖拽时恢复滚动位置（Motion 拖拽会重置 scroll）
-  const scrollBeforePointerRef = useRef<number>(0); // 在 pointerDown 阶段保存，早于 Motion 处理
+  const savedStateRef = useRef<string>(''); // Track if there are unsaved changes
+  const scrollRestoreRef = useRef<number | null>(null); // Restore scroll on drag (Motion resets scroll)
+  const scrollBeforePointerRef = useRef<number>(0); // Saved at pointerDown, before Motion handles it
   
   // Social State
   const [likes, setLikes] = useState(item.stats?.likes || 0);
@@ -391,18 +391,18 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     console.log('[CanvasDetail] Initializing items, readOnly:', readOnly, 'item.id:', item.id);
     console.log('[CanvasDetail] item.contentJson:', item.contentJson);
     
-    // ✅ Chat Save 时已自动生成位置，直接使用数据库的 items
+    // Chat Save already generates positions; use DB items directly
     if (item.contentJson?.items && Array.isArray(item.contentJson.items) && item.contentJson.items.length > 0) {
       console.log('[CanvasDetail] ✅ Loading from contentJson.items:', item.contentJson.items.length);
       console.log('[CanvasDetail] Items detail:', JSON.stringify(item.contentJson.items, null, 2));
       return item.contentJson.items;
     }
     
-    // ⚠️ 兜底：理论上不应该到这里（Save 时已生成 items）
+    // Fallback: should not reach here (Save generates items)
     console.warn('[CanvasDetail] ⚠️ No items found in contentJson, this should not happen after Chat Save');
     console.warn('[CanvasDetail] item.images:', item.images?.length, 'item.mindmaps:', item.mindmaps?.length);
     
-    // 返回空数组，避免错误
+    // Return empty array to avoid errors
     return [];
   }, []);
   
@@ -410,8 +410,8 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   useEffect(() => {
     const currentState = JSON.stringify({ title, items });
     savedStateRef.current = currentState;
-    // 不再从 localStorage 加载标题，因为 item.title 已经是数据库中的最新值
-    // localStorage 只用于检测未保存的更改
+    // No longer load title from localStorage; item.title is latest from DB
+    // localStorage only used to detect unsaved changes
   }, []);
 
   // Track changes
@@ -420,7 +420,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     setHasUnsavedChanges(currentState !== savedStateRef.current);
   }, [title, items]);
 
-  // 计算需要的最小画布高度：按当前 items 遍历取最底端 + 留白（与 append 逻辑一致）
+  // Compute min canvas height: bottom of items + padding (same as append logic)
   const DEFAULT_CANVAS_MIN_HEIGHT = 2000;
   const BOTTOM_PADDING = 200;
   const calculatedMinHeight = (() => {
@@ -464,7 +464,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
 
   const handleDeleteItem = (deletedItem: DraggableItem) => {
     setItems(prev => prev.filter(i => i.id !== deletedItem.id));
-    // 只有删除 image/mindmap 时才从 savedMessages 移除；删除 text/summary 只从 items 移除，不影响 Chat 的 saved 状态
+    // Only remove from savedMessages when deleting image/mindmap; deleting text/summary only removes from items
     if ((deletedItem.type === 'image' || deletedItem.type === 'mindmap') && deletedItem.messageId != null && String(deletedItem.messageId).trim()) {
       setSavedMessages(prev => prev.filter(id => id !== deletedItem.messageId));
     }
@@ -496,10 +496,10 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
   };
 
   const handleSave = async () => {
-    // ✅ 计算所有 text 元素的真实高度（每次保存都重新计算，因为内容可能已改变）
+    // Compute real height for all text elements (recalc on each save)
     const itemsWithRealHeights = items.map(item => {
-      if (item.type === 'text') {  // ← 移除条件，只要是text就重新计算
-        // 查找对应的 textarea DOM 元素
+      if (item.type === 'text') {
+        // Find corresponding textarea DOM element
         const textElement = document.querySelector(`[data-item-id="${item.id}"] textarea`) as HTMLTextAreaElement;
         
         if (textElement) {
@@ -511,9 +511,9 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
           });
           return { ...item, height: realHeight };
         } else {
-          // 如果找不到DOM（不应该发生），使用内容估算
-          const estimatedLines = Math.ceil(item.content.length / 40); // 假设每行40字符
-          const estimatedHeight = Math.max(estimatedLines * 48, 100); // 每行48px，最小100px
+          // If DOM not found (shouldn't happen), estimate from content
+          const estimatedLines = Math.ceil(item.content.length / 40); // ~40 chars per line
+          const estimatedHeight = Math.max(estimatedLines * 48, 100); // 48px per line, min 100px
           console.warn(`[Canvas Save] Could not find DOM for ${item.id}, using estimated height:`, estimatedHeight);
           return { ...item, height: estimatedHeight };
         }
@@ -535,7 +535,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
     // Also update the database if not in readOnly mode
     if (!readOnly) {
       try {
-        // ✅ 先获取现有的content_json，保留其他字段（如savedMessages）
+        // Get existing content_json first, keep other fields (e.g. savedMessages)
         const currentContentJson = item.contentJson || {};
         
         console.log('[Canvas Save] Current contentJson:', {
@@ -578,7 +578,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
       toast.success('Canvas saved locally!', { className: 'handwritten font-bold' });
     }
     
-    // ✅ 更新本地 state 为带真实高度的版本
+    // Update local state with real heights
     setItems(itemsWithRealHeights);
   };
 
@@ -967,7 +967,7 @@ export const CanvasDetail = ({ item, onClose, readOnly = false }: CanvasDetailPr
           }
         }}
       >
-        {/* 内层容器：提供足够高度触发滚动 */}
+        {/* Inner container: enough height for scroll */}
         <div id="canvas-inner-area" className="relative w-full" style={{ minHeight: `${calculatedMinHeight}px` }}>
         {/* Centered Title - Draggable */}
         <motion.div

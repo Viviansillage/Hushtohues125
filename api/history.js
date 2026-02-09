@@ -1,6 +1,6 @@
 import { getHistory, getActor, supabase, extractCanvasText, filterSystemTags, generateSemanticTags, classifyCommunityCategory } from './supabase.js';
 
-/** 从 chat_history 提取首图：优先 preview_images，空时从 content_json.items 推导 */
+/** Extract cover image from chat_history: prefer preview_images, else derive from content_json.items */
 function deriveCoverImage(item) {
   const previews = Array.isArray(item?.preview_images) ? item.preview_images : [];
   if (previews.length > 0) return previews[0];
@@ -9,7 +9,7 @@ function deriveCoverImage(item) {
   return firstImage?.content || null;
 }
 
-/** 从 canvas 提取第一个文字内容（卡片预览）：仅 items 中第一个 text，无则空（不用 artifact summary） */
+/** Extract first text from canvas (card preview): first text in items only, empty if none */
 function deriveFirstTextPreview(item) {
   const items = item?.content_json?.items || [];
   const firstTextItem = items.find((i) => i?.type === 'text' && i?.content);
@@ -48,14 +48,14 @@ export default async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
-    const id = url.searchParams.get('id');  // ✅ 改用 query param
+    const id = url.searchParams.get('id');
     
-    // ✅ 如果有 id 参数，走详情/更新/删除逻辑
+    // If id param, handle detail/update/delete
     if (id) {
       return handleHistoryById(req, res, id);
     }
     
-    // ========== GET /api/history - 列表接口 ==========
+    // ========== GET /api/history - List endpoint ==========
     const actor = getActor(req);
     console.log(`[${requestId}] [history.js] Method:`, req.method, 'Actor:', actor);
     
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
           owner_id: actor.id
         });
         
-        // 查询当前 actor 的 archive（由 content_json 决定是否展示）
+        // Query archive for current actor (content_json determines display)
         const { data, error } = await supabase
           .from('chat_history')
           .select('*')
@@ -95,8 +95,7 @@ export default async function handler(req, res) {
           const artifacts = item?.content_json?.artifacts;
           const hasItems = Array.isArray(items) && items.length > 0;
           const hasArtifacts = Array.isArray(artifacts) && artifacts.length > 0;
-          // 只展示有 items 或 artifacts 的 canvas；移除 hasLegacySystemTags，
-          // 避免老记录（仅有 content/messages、无 items）被当作 canvas 展示
+          // Only show canvas with items or artifacts; avoid old records (content/messages only) shown as canvas
           return hasItems || hasArtifacts;
         };
 
@@ -105,16 +104,16 @@ export default async function handler(req, res) {
           return first ? [first] : [];
         };
 
-        // 健壮地解析每条记录，跳过坏数据
+        // Robustly parse each record, skip bad data
         const history = (data || [])
           .filter(hasArchiveContent)
           .map(item => {
             try {
-              // 卡片预览：仅用 canvas 中第一个文字/artifact summary，无则空（不 fallback 到 last_message）
+              // Card preview: first text or artifact summary only, empty if none (no last_message fallback)
               const firstText = deriveFirstTextPreview(item);
               return {
                 id: item.id,
-                sessionId: item.session_id,  // ✅ 关键：返回 sessionId
+                sessionId: item.session_id,
                 title: item.title || 'Untitled',
                 messageCount: item.message_count || 0,
                 lastMessage: (firstText || '').trim(),
@@ -144,7 +143,7 @@ export default async function handler(req, res) {
     }
     
     if (req.method === 'POST') {
-      // 保存 archive（guest 也允许）
+      // Save archive (guest allowed)
       const body = await parseBody(req);
       const { title, content, messages, previewImages } = body;
       
@@ -152,7 +151,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Title is required' });
       }
       
-      // 计算过期时间：guest demo 7 天后过期
+      // Compute expiry: guest demo expires in 7 days
       const expiresAt = actor.type === 'guest' 
         ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
         : null;
@@ -202,10 +201,10 @@ async function handleHistoryById(req, res, id) {
     console.log('[history/[id]] Method:', req.method, 'ID:', id, 'Actor:', actor);
 
     if (req.method === 'DELETE') {
-      // 删除历史记录
+      // Delete history
       const { data: item } = await supabase
         .from('chat_history')
-        .select('owner_type, owner_id')
+        .select('owner_type, owner_id, session_id')
         .eq('id', id)
         .single();
 
@@ -217,6 +216,27 @@ async function handleHistoryById(req, res, id) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'api/history.js:213',
+          message: 'History DELETE start',
+          data: {
+            id,
+            sessionId: item.session_id || null,
+            actorType: actor.type,
+            actorId: actor.id
+          },
+          runId: 'pre-fix',
+          hypothesisId: 'H1',
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+
+      // First, delete the history record itself
       const { error } = await supabase
         .from('chat_history')
         .delete()
@@ -227,15 +247,61 @@ async function handleHistoryById(req, res, id) {
         return res.status(500).json({ error: 'Failed to delete', details: error.message });
       }
 
+      // Then, unpublish any related community_posts so they disappear from Discover
+      let relatedPosts = null;
+      let unpublishError = null;
+      if (item.session_id) {
+        const { data: posts, error: postsError } = await supabase
+          .from('community_posts')
+          .select('id, is_public')
+          .eq('session_id', item.session_id);
+        if (!postsError) {
+          relatedPosts = posts || [];
+        }
+
+        if (relatedPosts && relatedPosts.length > 0) {
+          const { error: updateError } = await supabase
+            .from('community_posts')
+            .update({ is_public: false, updated_at: new Date().toISOString() })
+            .eq('session_id', item.session_id);
+          if (updateError) {
+            unpublishError = updateError;
+            console.error('[history/[id]] Failed to unpublish related community_posts:', updateError);
+          }
+        }
+      }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9bfc82ef-eb42-4bc3-94ab-8e22f121a087', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'api/history.js:247',
+          message: 'History DELETE done, community_posts state after unpublish',
+          data: {
+            id,
+            sessionId: item.session_id || null,
+            relatedPostCount: Array.isArray(relatedPosts) ? relatedPosts.length : null,
+            relatedPostIds: Array.isArray(relatedPosts) ? relatedPosts.map(p => p.id).slice(0, 5) : null,
+            relatedPostIsPublic: Array.isArray(relatedPosts) ? relatedPosts.map(p => p.is_public) : null,
+            unpublishError: unpublishError ? unpublishError.message : null
+          },
+          runId: 'pre-fix',
+          hypothesisId: 'H1',
+          timestamp: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
+
       console.log('[history/[id]] Deleted:', id);
       return res.status(200).json({ success: true, id });
     }
 
     if (req.method === 'PATCH') {
-      // 更新历史记录（如标题、isPublic等）
+      // Update history (title, isPublic etc)
       const body = await parseBody(req);
       
-      // 验证所有权
+      // Verify ownership
       const { data: item } = await supabase
         .from('chat_history')
         .select('*, session_id')
@@ -250,7 +316,7 @@ async function handleHistoryById(req, res, id) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
-      // 更新 chat_history
+      // Update chat_history
       const updates = {};
       let publishTags = null;
       let communityCategoryName = null;
@@ -295,10 +361,10 @@ async function handleHistoryById(req, res, id) {
         return res.status(500).json({ error: 'Failed to update', details: error.message });
       }
 
-      // ========== Reference-Only Logic: 同步到 community_posts ==========
+      // ========== Reference-Only Logic: sync to community_posts ==========
       if (body.isPublic !== undefined && item.session_id) {
         if (body.isPublic === true) {
-          // ✅ 发布时强制要求 guest ID
+          // Require guest ID when publishing
           const publishActor = getActor(req, { requireGuestId: true });
           
           if (publishActor.error === 'MISSING_GUEST_ID' || !publishActor.id) {
@@ -315,11 +381,11 @@ async function handleHistoryById(req, res, id) {
             title: data.title
           });
           
-          // Public = true: 在 community_posts 中 upsert 引用记录（不复制内容）
-          // cover_image_url: 与 Archive 一致，优先 preview_images，空时从 content_json.items 推导
+          // Public = true: upsert ref in community_posts (no content copy)
+          // cover_image_url: same as Archive, prefer preview_images, derive from content_json.items if empty
           const coverImage = deriveCoverImage(data);
           
-          // ✅ 获取 author_name（优先使用前端传入的 authorDisplayName，供无帖子的 guest 首次发布使用）
+          // Get author_name (prefer authorDisplayName from frontend for guest first publish)
           let authorName = publishActor.name || `Guest-${publishActor.id.slice(-6)}`;
           if (body.authorDisplayName && typeof body.authorDisplayName === 'string' && body.authorDisplayName.trim()) {
             authorName = body.authorDisplayName.trim();
@@ -336,7 +402,7 @@ async function handleHistoryById(req, res, id) {
             }
           }
 
-          // ✅ 确保 created_at 有值
+          // Ensure created_at has value
           const createdAt = item.created_at || item.timestamp || new Date().toISOString();
           
           const tagsForPublish = Array.isArray(publishTags)
@@ -380,7 +446,7 @@ async function handleHistoryById(req, res, id) {
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'session_id',
-              ignoreDuplicates: false  // 更新已存在的记录
+              ignoreDuplicates: false  // Update existing records
             })
             .select('id, session_id')
             .single();
@@ -401,7 +467,7 @@ async function handleHistoryById(req, res, id) {
           // ✅ Important: Return communityPostId in response
           data.communityPostId = publishedPost.id;
         } else {
-          // Public = false: 标记为不公开（保留记录用于审计）
+          // Public = false: mark not public (keep record for audit)
           console.log('[history/[id]] 📥 Unpublishing from community:', item.session_id);
           
           const { error: unpublishError } = await supabase
@@ -422,7 +488,7 @@ async function handleHistoryById(req, res, id) {
 
       return res.status(200).json({
         id: data.id,
-        sessionId: data.session_id,  // ✅ 返回 sessionId
+        sessionId: data.session_id,
         title: data.title,
         messageCount: data.message_count,
         lastMessage: data.last_message,
@@ -434,7 +500,7 @@ async function handleHistoryById(req, res, id) {
     }
 
     if (req.method === 'GET') {
-      // 获取单个历史记录详情
+      // Get single history detail
       const { data, error } = await supabase
         .from('chat_history')
         .select('*')
@@ -445,14 +511,14 @@ async function handleHistoryById(req, res, id) {
         return res.status(404).json({ error: 'Item not found' });
       }
 
-      // 如果是私有的，验证所有权
+      // If private, verify ownership
       if (!data.is_public && (data.owner_type !== actor.type || data.owner_id !== actor.id)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
       return res.status(200).json({
         id: data.id,
-        sessionId: data.session_id,  // ✅ 返回 sessionId
+        sessionId: data.session_id,
         title: data.title,
         messageCount: data.message_count,
         lastMessage: data.last_message,

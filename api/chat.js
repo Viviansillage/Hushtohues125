@@ -1,11 +1,11 @@
 import { supabase, getActor } from './supabase.js';
 
 /**
- * 指数退避重试工具函数
- * @param {Function} fn - 要执行的异步函数
- * @param {number} maxRetries - 最大重试次数
- * @param {number} initialDelay - 初始延迟（毫秒）
- * @returns {Promise} 函数执行结果
+ * Exponential backoff retry utility
+ * @param {Function} fn - Async function to execute
+ * @param {number} maxRetries - Max retry count
+ * @param {number} initialDelay - Initial delay (ms)
+ * @returns {Promise} Function result
  */
 async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
   let lastError;
@@ -16,7 +16,7 @@ async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
     } catch (error) {
       lastError = error;
       
-      // 检查是否应该重试
+      // Check if should retry
       const shouldRetry = 
         error.message?.includes('429') || // Rate limit
         error.message?.includes('503') || // Service unavailable
@@ -28,9 +28,9 @@ async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
         throw error;
       }
       
-      // 指数退避延迟
+      // Exponential backoff delay
       const delay = initialDelay * Math.pow(2, attempt);
-      const jitter = Math.random() * 200; // 加入随机抖动
+      const jitter = Math.random() * 200; // Add random jitter
       const totalDelay = delay + jitter;
       
       console.log(`[Retry] Attempt ${attempt + 1}/${maxRetries} failed. Retrying in ${Math.round(totalDelay)}ms...`);
@@ -77,7 +77,7 @@ async function parseBody(req) {
 }
 
 /**
- * System Prompt: Hush to Hues 产品定位
+ * System Prompt: Hush to Hues product positioning
  */
 const SYSTEM_PROMPT = `You are the Hush to Hues AI assistant.
 Your primary role is to help users clarify, organize, and reflect on their own thoughts — not to invent new ideas.
@@ -179,7 +179,7 @@ Your task:
    - ✓ CORRECT: root((Topic - Subtitle))
 
 2. **If title contains parentheses, rewrite as "A - B"**:
-   - "Dungeon Meshi (迷宫饭)" → "Dungeon Meshi - 迷宫饭"
+   - "Dungeon Meshi (manga)" → "Dungeon Meshi - manga"
    - "Python (Programming)" → "Python - Programming"
 
 3. **Each node MUST be on its own line**:
@@ -235,12 +235,12 @@ Output STRICT JSON ONLY:
   "imagePrompt": "<detailed functional image description including subject, style, mood, composition, color palette, lighting, and constraints. Avoid text, logos, or UI elements. Max 500 characters>"
 }`;
 
-// 全局缓存：可用的图像模型列表
+// Global cache: available image models list
 let availableImageModels = null;
 
 /**
- * 检测当前 API key 可用的图像生成模型
- * 返回格式: { hasImagen: boolean, hasGeminiFlash: boolean, models: string[] }
+ * Detect image generation models available for current API key
+ * Returns: { hasImagen: boolean, hasGeminiFlash: boolean, models: string[] }
  * 
  * IMPORTANT NOTE - Imagen API vs Gemini Image Models:
  * - Imagen API (imagen-4.0-generate-001) is VERTEX AI only, not available via Gemini Developer API
@@ -251,7 +251,7 @@ let availableImageModels = null;
  */
 async function detectAvailableImageModels() {
   if (availableImageModels) {
-    return availableImageModels; // 使用缓存
+    return availableImageModels; // Use cache
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -277,7 +277,7 @@ async function detectAvailableImageModels() {
     const allModels = data.models || [];
     const modelNames = allModels.map(m => m.name.replace('models/', ''));
     
-    // 查找图像相关模型
+    // Find image-related models
     const imagenModels = modelNames.filter(name => name.includes('imagen'));
     const geminiFlashModels = modelNames.filter(name => 
       name.includes('gemini-2.5-flash-image') || 
@@ -316,8 +316,8 @@ async function detectAvailableImageModels() {
 }
 
 /**
- * 使用 Gemini 2.5 Flash Image (Nano Banana) 生成图片
- * 官方文档: https://ai.google.dev/gemini-api/docs/image-generation
+ * Generate image using Gemini Flash Image (Nano Banana)
+ * Docs: https://ai.google.dev/gemini-api/docs/image-generation
  * 
  * CRITICAL: This uses Gemini Developer API's native image generation capability.
  * Model: gemini-2.5-flash-image (or env var GEMINI_IMAGE_MODEL)
@@ -332,7 +332,7 @@ async function detectAvailableImageModels() {
 async function callGeminiFlashImage(prompt) {
   const requestId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
-  // 使用重试机制包装实际调用
+  // Wrap call with retry
   return await retryWithBackoff(async () => {
     const startTime = Date.now();
     
@@ -502,13 +502,13 @@ async function callGeminiFlashImage(prompt) {
     
     throw error;
   }
-  }, 3, 1000); // 最多重试3次，初始延迟1秒
+  }, 3, 1000); // Max 3 retries, 1s initial delay
 }
 
 /**
- * 调用 Google Imagen 4 API 生成图片
- * 官方文档: https://ai.google.dev/gemini-api/docs/imagen
- * 模型: imagen-4.0-generate-001 (最新稳定版本)
+ * Call Google Imagen 4 API to generate image
+ * Docs: https://ai.google.dev/gemini-api/docs/imagen
+ * Model: imagen-4.0-generate-001 (latest stable)
  */
 async function callImagen(prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -520,7 +520,7 @@ async function callImagen(prompt) {
 
   console.log('[Imagen] Using API key:', apiKey.substring(0, 10) + '...');
   
-  // 使用官方推荐的 Imagen 4 endpoint
+  // Use official Imagen 4 endpoint
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:generateImages?key=${apiKey}`;
   
   const body = {
@@ -548,7 +548,7 @@ async function callImagen(prompt) {
     const errorText = await response.text();
     console.error('[Imagen] API error response:', errorText.substring(0, 500));
     
-    // 解析常见错误
+    // Parse common errors
     if (response.status === 401) {
       throw new Error('Authentication failed: Invalid GEMINI_API_KEY');
     } else if (response.status === 403) {
@@ -565,7 +565,7 @@ async function callImagen(prompt) {
   const data = await response.json();
   console.log('[Imagen] Response data keys:', Object.keys(data));
   
-  // Imagen 4 返回格式: { generatedImages: [{ bytesBase64Encoded: "..." }] }
+  // Imagen 4 response: { generatedImages: [{ bytesBase64Encoded: "..." }] }
   if (!data.generatedImages || !data.generatedImages[0] || !data.generatedImages[0].bytesBase64Encoded) {
     console.error('[Imagen] Unexpected response structure:', JSON.stringify(data).substring(0, 500));
     throw new Error('No image data returned from Imagen API');
@@ -580,7 +580,7 @@ async function callImagen(prompt) {
 }
 
 /**
- * 调用 Gemini API
+ * Call Gemini API
  */
 async function callGemini(messages, userText, customPrompt = null) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -609,7 +609,7 @@ async function callGemini(messages, userText, customPrompt = null) {
     });
   }
 
-  // 若未传入 messages，fallback 使用 userText 作为输入
+  // If no messages, fallback to userText as input
   if (contents.length === 0 && userText) {
     contents.push({
       role: 'user',
@@ -671,14 +671,14 @@ async function callGemini(messages, userText, customPrompt = null) {
 }
 
 /**
- * 生成会话标题（使用 Gemini）
+ * Generate session title (using Gemini)
  */
 async function generateSessionTitle(messages) {
   if (!messages || messages.length === 0) {
     return 'Untitled Session';
   }
 
-  // 如果没有 API key，直接 fallback
+  // If no API key, fallback
   if (!process.env.GEMINI_API_KEY) {
     console.warn('[Title Generation] GEMINI_API_KEY not set, using fallback');
     const firstUserMsg = messages.find(m => m.sender === 'user');
@@ -690,7 +690,7 @@ async function generateSessionTitle(messages) {
   }
 
   try {
-    const recentMessages = messages.slice(-10); // 最近 10 条消息
+    const recentMessages = messages.slice(-10); // Last 10 messages
     const conversationText = recentMessages
       .map(m => `${m.sender}: ${m.text}`)
       .join('\n');
@@ -719,10 +719,10 @@ Title (phrase/topic only, no quotes):`;
     const result = await model.generateContent(titlePrompt);
     let title = result.response.text().trim();
     
-    // 清理引号
+    // Strip quotes
     title = title.replace(/^["']|["']$/g, '');
     
-    // 限制长度
+    // Limit length
     if (title.length > 100) {
       title = title.substring(0, 100);
     }
@@ -730,12 +730,12 @@ Title (phrase/topic only, no quotes):`;
     return title || 'Conversation Summary';
   } catch (error) {
     console.error('[Title Generation] Error:', error);
-    // Fallback: 从对话中提取关键信息
+    // Fallback: extract from conversation
     const userMessages = messages.filter(m => m.sender === 'user');
     if (userMessages.length > 0) {
-      // 尝试从第一条消息中提取主题
+      // Try extract topic from first message
       const firstMsg = userMessages[0].text;
-      // 移除常见的开场白（中英文）
+      // Remove common openings (EN/other)
       const cleaned = firstMsg
         .replace(/^(hi|hello|hey|can you|could you|i want|i wanna|please|help me|let's|how do i|how to|what is|what's|tell me about|explain)/i, '')
         .trim();
@@ -750,7 +750,7 @@ Title (phrase/topic only, no quotes):`;
 }
 
 /**
- * 清理 mindmap 中 (( )) 内的嵌套括号，避免 Mermaid 解析错误
+ * Clean nested parentheses inside (( )) in mindmap to avoid Mermaid parse errors
  */
 function cleanMermaidParentheses(code) {
   if (!code || typeof code !== 'string') return code;
@@ -761,7 +761,7 @@ function cleanMermaidParentheses(code) {
 }
 
 /**
- * 验证并预处理 mermaidCode：若为自然语言或无效格式则返回安全 fallback mindmap
+ * Validate and sanitize mermaidCode; return safe fallback if natural language or invalid
  */
 function validateAndSanitizeMermaidCode(mermaidCode, title = 'Diagram') {
   if (!mermaidCode || typeof mermaidCode !== 'string') {
@@ -773,22 +773,22 @@ function validateAndSanitizeMermaidCode(mermaidCode, title = 'Diagram') {
   if (!isValid) {
     return `mindmap\n  root((${title}))\n    summary((Diagram could not be generated))`;
   }
-  // 常见 AI 拒绝/自然语言片段：若首行类似 "Hello" / "I cannot" 等，视为无效
+  // Common AI refusal/natural language: if first line is "Hello"/"I cannot" etc, treat as invalid
   const firstLine = trimmed.split('\n')[0]?.toLowerCase() || '';
   const refusalPatterns = /^(hello|hi|i cannot|i am unable|i'm unable|sorry|unfortunately|p\.?s\.?)/;
   if (refusalPatterns.test(firstLine.replace(/^["']|["']$/g, '').trim())) {
     return `mindmap\n  root((${title}))\n    summary((Diagram could not be generated))`;
   }
-  // mindmap 类型：清理 (( )) 内括号
+  // mindmap type: clean parentheses inside (( ))
   if (trimmed.toLowerCase().startsWith('mindmap')) {
     return cleanMermaidParentheses(trimmed);
   }
-  // flowchart/graph：替换节点标签中可能导致 parse 错误的序列（如 P.S.）
+  // flowchart/graph: replace node label sequences that may cause parse errors (e.g. P.S.)
   return trimmed.replace(/P\.\s*S\./gi, 'PS');
 }
 
 
-// 提取 JSON 片段或原文
+// Extract JSON fragment or raw text
 function extractJsonLike(text = "") {
   const cleaned = text
     .trim()
@@ -809,7 +809,7 @@ function extractJsonLike(text = "") {
   return cleaned;
 }
 
-// 容错 JSON 解析
+// Fault-tolerant JSON parse
 function safeParseJson(text) {
   const candidate = extractJsonLike(text);
   try {
@@ -820,7 +820,7 @@ function safeParseJson(text) {
 }
 
 /**
- * 安全解析 Gemini JSON，parse 失败时降级为普通文本
+ * Safely parse Gemini JSON; fallback to plain text on parse failure
  */
 function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
   // #region agent log (Vercel console - copy this line to debug)
@@ -849,11 +849,11 @@ function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
     console.log('[ChatDebug] safeParseGeminiJson PARSE FAILED (fallback used)', JSON.stringify({ errorMessage: parsed.error ?? '', textLength: text?.length ?? 0 }));
     // #endregion
     console.error('Failed to parse Gemini JSON:', parsed.error);
-    // 降级为普通文本
+    // Fallback to plain text
     const fallbackReply =
       typeof text === 'string' && text.length < 300
         ? text
-        : 'Sorry, the response was cut off or invalid. Please try a shorter question or try again. 回复被截断或格式异常，请缩短问题后重试。';
+        : 'Sorry, the response was cut off or invalid. Please try a shorter question or try again.';
     return {
       reply: fallbackReply,
       title: fallbackTitle,
@@ -865,7 +865,7 @@ function safeParseGeminiJson(text, fallbackTitle = 'Untitled') {
 }
 
 /**
- * 获取或创建对话
+ * Get or create conversation
  */
 async function getOrCreateConversation(actor, conversationId) {
   if (conversationId) {
@@ -881,7 +881,7 @@ async function getOrCreateConversation(actor, conversationId) {
     return data;
   }
 
-  // 创建新对话
+  // Create new conversation
   const welcomeMessage = {
     id: `msg-${Date.now()}-welcome`,
     text: "Hi there! I'm here to help you organize and clarify your thoughts. Just share your ideas with me, and we'll work together to make them clearer and more structured.",
@@ -916,7 +916,7 @@ async function getOrCreateConversation(actor, conversationId) {
 }
 
 /**
- * 更新对话
+ * Update conversation
  */
 async function updateConversation(conversationId, messages, title = null) {
   const updateData = {
@@ -945,7 +945,7 @@ async function updateConversation(conversationId, messages, title = null) {
 }
 
 /**
- * 统一的 Chat API 端点
+ * Unified Chat API endpoint
  */
 export default async function handler(req, res) {
   console.log('[chat.js] Handler called:', req.method, req.url);
@@ -965,7 +965,7 @@ export default async function handler(req, res) {
 
     console.log('[chat.js] Action:', action, 'Actor:', actor);
 
-    // ========== GET /api/chat?action=diagnostics - 模型诊断端点 ==========
+    // ========== GET /api/chat?action=diagnostics - Model diagnostics ==========
     if (req.method === 'GET' && action === 'diagnostics') {
       console.log('[GET diagnostics] Running model availability check...');
       try {
@@ -995,7 +995,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ========== GET /api/debug/models - 列出所有可用模型 ==========
+    // ========== GET /api/debug/models - List available models ==========
     if (req.method === 'GET' && (action === 'debug-models' || url.pathname === '/api/debug/models')) {
       console.log('[GET debug-models] Listing all available models...');
       
@@ -1024,7 +1024,7 @@ export default async function handler(req, res) {
         const allModels = data.models || [];
         const modelNames = allModels.map(m => m.name.replace('models/', ''));
         
-        // 筛选图像相关模型
+        // Filter image-capable models
         const imageModels = modelNames.filter(name => 
           name.includes('image') || 
           name.includes('imagen') ||
@@ -1033,7 +1033,7 @@ export default async function handler(req, res) {
           name.includes('pro-image')
         );
         
-        // 检查推荐模型
+        // Check recommended models
         const recommended = [
           'gemini-2.5-flash-image',
           'gemini-2.0-flash-image',
@@ -1062,7 +1062,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ========== GET /api/chat?action=sessions - 获取所有聊天会话列表 ==========
+    // ========== GET /api/chat?action=sessions - Get all chat sessions ==========
     if (req.method === 'GET' && action === 'sessions') {
       try {
         const { getChatSessions } = await import('./supabase.js');
@@ -1077,9 +1077,9 @@ export default async function handler(req, res) {
       }
     }
 
-    // ========== GET /api/chat?action=load - 从DB加载消息 ==========
+    // ========== GET /api/chat?action=load - Load messages from DB ==========
     if (req.method === 'GET' && action === 'load') {
-      const sessionId = url.searchParams.get('sessionId');  // 修复：使用 URL params
+      const sessionId = url.searchParams.get('sessionId');
       
       if (!sessionId) {
         return res.status(400).json({ error: 'Missing sessionId parameter' });
@@ -1098,7 +1098,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ========== POST /api/chat?action=save - 保存单条消息到DB ==========
+    // ========== POST /api/chat?action=save - Save single message to DB ==========
     if (req.method === 'POST' && action === 'save') {
       const body = await parseBody(req);
       const { sessionId, message } = body;
@@ -1118,13 +1118,13 @@ export default async function handler(req, res) {
       }
     }
 
-    // ========== GET /api/chat?action=messages - 已废弃（前端自行维护 messages）==========
+    // ========== GET /api/chat?action=messages - Deprecated (frontend maintains messages) ==========
     if (req.method === 'GET' && action === 'messages') {
       console.log('[GET messages] Deprecated: returning empty array');
       return res.status(200).json([]);
     }
 
-    // ========== POST /api/chat?action=message - 发送消息（新架构：从DB获取+保存）==========
+    // ========== POST /api/chat?action=message - Send message (load from DB + save) ==========
     if (req.method === 'POST' && action === 'message') {
       const requestId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
@@ -1142,13 +1142,13 @@ export default async function handler(req, res) {
 
         console.log(`[${requestId}] [POST message] Text:`, text.substring(0, 100), 'SessionId:', sessionId);
 
-        // 从DB加载现有消息
+        // Load existing messages from DB
         const { getMessages, saveMessage } = await import('./supabase.js');
         let messages = await getMessages(sessionId);
         
         console.log(`[${requestId}] [POST message] Loaded from DB:`, messages.length);
 
-        // 添加用户消息
+        // Add user message
         const userMessage = {
           id: `msg-${Date.now()}-u`,
           text,
@@ -1156,12 +1156,12 @@ export default async function handler(req, res) {
           timestamp: new Date().toISOString()
         };
         
-        // 保存用户消息到DB
+        // Save user message to DB
         await saveMessage(sessionId, userMessage, actor);
 
         console.log(`[${requestId}] [POST message] Calling Gemini...`);
         
-        // 调用 Gemini - 传入包含用户消息的完整历史
+        // Call Gemini with full history including user message
         const messagesWithUser = [...messages, userMessage];
         const geminiResponse = await callGemini(messagesWithUser, text);
         const structured = safeParseGeminiJson(geminiResponse);
@@ -1172,7 +1172,7 @@ export default async function handler(req, res) {
 
         console.log(`[${requestId}] [POST message] Gemini responded, saving bot message...`);
         
-        // 添加 bot 消息
+        // Add bot message
         const botMessage = {
           id: `msg-${Date.now()}-b`,
           text: structured.reply,
@@ -1180,10 +1180,10 @@ export default async function handler(req, res) {
           timestamp: new Date().toISOString()
         };
         
-        // 保存bot消息到DB
+        // Save bot message to DB
         await saveMessage(sessionId, botMessage, actor);
         
-        // 构建完整消息列表返回
+        // Build and return full message list
         const allMessages = [...messagesWithUser, botMessage];
 
         console.log(`[${requestId}] [POST message] Saved to DB, returning:`, allMessages.length);
@@ -1209,7 +1209,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ========== POST /api/chat?action=artifact - 创建 artifact（新架构：从DB获取messages）==========
+    // ========== POST /api/chat?action=artifact - Create artifact (load messages from DB) ==========
     if (req.method === 'POST' && action === 'artifact') {
       const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const body = await parseBody(req);
@@ -1228,13 +1228,13 @@ export default async function handler(req, res) {
       console.log(`[${requestId}] [POST artifact] Kind:`, kind, 'SessionId:', sessionId);
 
       try {
-        // 从DB加载消息
+        // Load messages from DB
         const { getMessages, saveArtifact } = await import('./supabase.js');
         const messages = await getMessages(sessionId);
         
         console.log(`[${requestId}] Loaded messages from DB:`, messages.length);
         
-        // 验证消息数量
+        // Validate message count
         if (kind === 'mindmap' && messages.length < 2) {
           console.warn(`[${requestId}] Not enough messages for mindmap:`, messages.length);
           return res.status(400).json({ 
@@ -1263,11 +1263,11 @@ export default async function handler(req, res) {
           
           model = 'gemini-2.0-flash-exp';
 
-          // 保存artifact到DB
+          // Save artifact to DB
           const savedArtifact = await saveArtifact(sessionId, {
             type: 'mindmap',
             prompt: conversationText.substring(0, 500),
-            publicUrl: 'mindmap://inline', // mindmap不需要存储URL
+            publicUrl: 'mindmap://inline', // mindmap does not need storage URL
             provider,
             model,
             metadata: {
@@ -1303,7 +1303,7 @@ export default async function handler(req, res) {
           
           let imageData;
           try {
-            // Step 1: 生成图片 prompt
+            // Step 1: Generate image prompt
             console.log(`[${requestId}] [Step 1/5] Generating image prompt via Gemini...`);
             const { GoogleGenerativeAI } = await import('@google/generative-ai');
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -1338,7 +1338,7 @@ export default async function handler(req, res) {
           let usedModel = null;
 
           try {
-            // Step 2: 检测可用模型
+            // Step 2: Detect available models
             console.log(`[${requestId}] [Step 2/5] Detecting available image models...`);
             const detectionResult = await detectAvailableImageModels();
             console.log(`[${requestId}] Model detection result:`, {
@@ -1347,7 +1347,7 @@ export default async function handler(req, res) {
               geminiFlashModel: detectionResult.geminiFlashModel
             });
 
-            // Step 3: 生成图片（优先使用 Gemini Flash）
+            // Step 3: Generate image (prefer Gemini Flash)
             console.log(`[${requestId}] [Step 3/5] Generating image...`);
             if (detectionResult.hasGeminiFlash) {
               console.log(`[${requestId}] Using Gemini 2.5 Flash Image...`);
@@ -1366,7 +1366,7 @@ export default async function handler(req, res) {
               throw new Error('No image generation models available (neither Gemini Flash nor Imagen)');
             }
             
-            // 验证生成的 imageUrl 是 data URL
+            // Verify imageUrl is data URL
             if (!imageUrl || !imageUrl.startsWith('data:image')) {
               console.error(`[${requestId}] Invalid image data format:`, imageUrl?.substring(0, 100));
               throw new Error(`Invalid image data returned from ${usedModel}: expected data:image URL`);
@@ -1384,14 +1384,14 @@ export default async function handler(req, res) {
             });
           }
 
-          // Step 4: 上传到 Supabase Storage
+          // Step 4: Upload to Supabase Storage
           console.log(`[${requestId}] [Step 4/5] Uploading to Supabase Storage...`);
           
           let publicUrl = null;
           let storagePath = null;
           
           try {
-            // 提取 base64 数据
+            // Extract base64 data
             const base64Match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
             if (!base64Match) {
               console.error(`[${requestId}] Invalid data URL format`);
@@ -1408,7 +1408,7 @@ export default async function handler(req, res) {
               base64Length: base64Data.length
             });
             
-            // 上传到 Supabase Storage
+            // Upload to Supabase Storage
             console.log(`[${requestId}] Calling uploadImageToStorage...`);
             const { uploadImageToStorage } = await import('./supabase.js');
             const uploadResult = await uploadImageToStorage(base64Data, mimeType, {
@@ -1426,7 +1426,7 @@ export default async function handler(req, res) {
               bucket: 'artifacts'
             });
             
-            // 验证 publicUrl 格式
+            // Verify publicUrl format
             if (!publicUrl || !publicUrl.startsWith('http')) {
               console.error(`[${requestId}] Invalid publicUrl returned:`, publicUrl);
               throw new Error('Supabase returned invalid publicUrl');
@@ -1443,7 +1443,7 @@ export default async function handler(req, res) {
             });
           }
           
-          // Step 5: 保存artifact到DB
+          // Step 5: Save artifact to DB
           console.log(`[${requestId}] [Step 5/5] Saving artifact to database...`);
           let savedArtifact;
           try {
@@ -1467,11 +1467,11 @@ export default async function handler(req, res) {
             });
           } catch (dbError) {
             console.error(`[${requestId}] [Step 5/5] FAILED - Database save error:`, dbError.message);
-            // 数据库保存失败但图片已上传，仍返回成功（降级处理）
+            // DB save failed but image uploaded; still return success (graceful degradation)
             console.warn(`[${requestId}] Continuing despite DB error - image is uploaded`);
           }
           
-          // 构建返回数据（不包含base64）
+          // Build response (no base64)
           artifactResult = {
             kind: 'image',
             createdAt: new Date().toISOString(),
@@ -1486,7 +1486,7 @@ export default async function handler(req, res) {
             }
           };
           
-          // 验证不包含base64
+          // Verify no base64
           const payloadStr = JSON.stringify(artifactResult);
           if (payloadStr.includes('base64')) {
             console.error(`[${requestId}] WARNING: base64 detected in artifact payload!`);
@@ -1497,7 +1497,7 @@ export default async function handler(req, res) {
         } else if (kind === 'save') {
           console.log(`[${requestId}] Saving conversation...`);
           
-          // Save功能只更新chat_history,不需要生成新artifact
+          // Save only updates chat_history, no new artifact
           artifactResult = {
             kind: 'save',
             createdAt: new Date().toISOString(),
@@ -1505,7 +1505,7 @@ export default async function handler(req, res) {
           };
         }
 
-        // 构造响应（不再更新chat_history表，该表将被deprecated）
+        // Build response (chat_history table will be deprecated)
         const response = {
           message: {
             id: `msg-${Date.now()}`,
@@ -1516,7 +1516,7 @@ export default async function handler(req, res) {
           requestId
         };
 
-        // 根据kind添加特定数据
+        // Add kind-specific data
         if (kind === 'mindmap' && artifactResult) {
           response.structuredMindmap = {
             mermaidCode: artifactResult.payload.mermaidCode || 'mindmap\n  root((No data))',
@@ -1528,7 +1528,7 @@ export default async function handler(req, res) {
         }
         
         if (kind === 'image' && artifactResult) {
-          // 验证 imageUrl 必须存在且可访问
+          // Verify imageUrl exists and is accessible
           const imageUrl = artifactResult.payload.imageUrl;
           if (!imageUrl || !imageUrl.startsWith('http')) {
             console.error(`[${requestId}] CRITICAL: Invalid imageUrl:`, imageUrl);
@@ -1540,7 +1540,7 @@ export default async function handler(req, res) {
             });
           }
           
-          // 统一的 artifact 响应结构
+          // Unified artifact response structure
           response.artifact = {
             type: 'image',
             title: artifactResult.payload.title || 'Generated Image',
@@ -1552,13 +1552,13 @@ export default async function handler(req, res) {
             model: artifactResult.payload.model
           };
           
-          // 向后兼容：保留 generatedImage 字段
+          // Backward compat: keep generatedImage field
           response.generatedImage = response.artifact;
           
-          // 标记成功
+          // Mark success
           response.ok = true;
           
-          // 验证响应中不包含 base64
+          // Verify response contains no base64
           const responseStr = JSON.stringify(response);
           if (responseStr.includes('base64')) {
             console.error(`[${requestId}] CRITICAL: base64 detected in response!`);
@@ -1575,11 +1575,11 @@ export default async function handler(req, res) {
 
         console.log(`[${requestId}] Artifact ${kind} completed successfully`);
         
-        // ========== 只有 kind='save' 才保存到 chat_history (Archive) ==========
+        // ========== Only kind='save' saves to chat_history (Archive) ==========
         if (kind === 'save') {
           console.log(`[${requestId}] Saving to archive (chat_history)...`);
           
-          // 查询是否已有该 sessionId 的记录
+          // Check if record exists for sessionId
           const { data: existingRecord } = await supabase
             .from('chat_history')
             .select('*')
@@ -1588,13 +1588,13 @@ export default async function handler(req, res) {
             .eq('content_json->>sessionId', sessionId)
             .maybeSingle();
           
-          // 生成标题
+          // Generate title
           const generatedTitle = await generateSessionTitle(messages);
           const title = generatedTitle || `Session ${new Date().toLocaleString()}`;
           const lastMessage = messages.slice(-1)[0]?.text?.substring(0, 200) || 'Saved conversation';
           
           if (existingRecord) {
-            // UPDATE: 更新现有记录
+            // UPDATE: Update existing record
             await supabase
               .from('chat_history')
               .update({
@@ -1607,7 +1607,7 @@ export default async function handler(req, res) {
             
             console.log(`[${requestId}] Updated archive record:`, existingRecord.id);
           } else {
-            // INSERT: 创建新记录
+            // INSERT: Create new record
             await supabase
               .from('chat_history')
               .insert({
@@ -1615,7 +1615,7 @@ export default async function handler(req, res) {
                 owner_id: actor.id,
                 title,
                 last_message: lastMessage,
-                content_json: { sessionId, messages: messages.slice(-10) }, // 只保存最近10条
+                content_json: { sessionId, messages: messages.slice(-10) }, // Save last 10 only
                 message_count: messages.length,
                 tags: [],
                 is_demo: actor.type === 'guest',

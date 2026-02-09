@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 
-// 加载 .env.local 文件
+// Load .env.local file
 dotenv.config({ path: '.env.local' });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,17 +14,17 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ 错误：请在 .env.local 中配置 SUPABASE_URL 和 SUPABASE_SERVICE_KEY');
+  console.error('❌ Error: please configure SUPABASE_URL and SUPABASE_SERVICE_KEY in .env.local');
   process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function clearDatabase() {
-  console.log('🗑️  清空现有数据...\n');
+  console.log('🗑️  Clearing existing data...\n');
   
   try {
-    // 按依赖关系倒序删除
+    // Delete in reverse dependency order
     const tables = [
       'user_bookmarks',
       'user_likes', 
@@ -42,32 +42,32 @@ async function clearDatabase() {
         .neq('id', '00000000-0000-0000-0000-000000000000');
       
       if (error) {
-        console.log(`⚠️  清空 ${table} 表失败（可能是空表）:`, error.message);
+        console.log(`⚠️  Failed to clear table ${table} (it may already be empty):`, error.message);
       } else {
-        console.log(`✅ 已清空 ${table}`);
+        console.log(`✅ Cleared table ${table}`);
       }
     }
     
-    console.log('\n✅ 数据库已清空\n');
+    console.log('\n✅ Database cleared\n');
   } catch (error) {
-    console.error('❌ 清空数据库失败:', error);
+    console.error('❌ Failed to clear database:', error);
     throw error;
   }
 }
 
 async function migrateData() {
   try {
-    console.log('🚀 开始迁移数据...\n');
+    console.log('🚀 Starting data migration...\n');
 
-    // 先清空数据库
+    // First clear the database
     await clearDatabase();
 
-    // 读取 db.json
+    // Read db.json
     const dbPath = join(__dirname, '..', 'server', 'db.json');
     const dbData = JSON.parse(readFileSync(dbPath, 'utf-8'));
 
-    // 1. 迁移用户配置
-    console.log('📝 迁移用户配置...');
+    // 1. Migrate user profile
+    console.log('📝 Migrating user profile...');
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .insert({
@@ -80,15 +80,15 @@ async function migrateData() {
       .single();
 
     if (profileError) {
-      console.error('❌ 用户配置迁移失败:', profileError.message);
+      console.error('❌ Failed to migrate user profile:', profileError.message);
       return;
     }
-    console.log('✅ 用户配置已迁移\n');
+    console.log('✅ User profile migrated\n');
 
     const profileId = profile.id;
 
-    // 2. 迁移聊天历史
-    console.log('📝 迁移聊天历史...');
+    // 2. Migrate chat history
+    console.log('📝 Migrating chat history...');
     for (const item of dbData.history) {
       const { error } = await supabase
         .from('chat_history')
@@ -104,13 +104,13 @@ async function migrateData() {
         });
 
       if (error) {
-        console.error(`❌ 历史记录 "${item.title}" 迁移失败:`, error.message);
+        console.error(`❌ Failed to migrate history "${item.title}":`, error.message);
       }
     }
-    console.log(`✅ ${dbData.history.length} 条聊天历史已迁移\n`);
+    console.log(`✅ Migrated ${dbData.history.length} chat history records\n`);
 
-    // 3. 迁移社区标签
-    console.log('📝 迁移社区标签...');
+    // 3. Migrate community tags
+    console.log('📝 Migrating community tags...');
     const allTags = [...dbData.community.followed, ...dbData.community.recommended];
     const uniqueTags = Array.from(new Map(allTags.map(tag => [tag.name, tag])).values());
     
@@ -128,15 +128,15 @@ async function migrateData() {
         .single();
 
       if (error) {
-        console.error(`❌ 标签 "${tag.name}" 迁移失败:`, error.message);
+        console.error(`❌ Failed to migrate tag "${tag.name}":`, error.message);
       } else {
         tagIdMap[tag.name] = data.id;
       }
     }
-    console.log(`✅ ${uniqueTags.length} 个社区标签已迁移\n`);
+    console.log(`✅ Migrated ${uniqueTags.length} community tags\n`);
 
-    // 4. 迁移关注的社区
-    console.log('📝 迁移关注的社区...');
+    // 4. Migrate followed communities
+    console.log('📝 Migrating followed communities...');
     for (const tagName of dbData.user.followedCommunities) {
       if (tagIdMap[tagName]) {
         const { error } = await supabase
@@ -147,14 +147,14 @@ async function migrateData() {
           });
 
         if (error && error.code !== '23505') {
-          console.error(`❌ 关注社区 "${tagName}" 失败:`, error.message);
+          console.error(`❌ Failed to migrate followed community "${tagName}":`, error.message);
         }
       }
     }
-    console.log(`✅ ${dbData.user.followedCommunities.length} 个关注的社区已迁移\n`);
+    console.log(`✅ Migrated ${dbData.user.followedCommunities.length} followed communities\n`);
 
-    // 5. 迁移社区帖子
-    console.log('📝 迁移社区帖子...');
+    // 5. Migrate community posts
+    console.log('📝 Migrating community posts...');
     const postIdMap = {};
     for (const post of dbData.communityPosts) {
       const { data, error } = await supabase
@@ -173,15 +173,15 @@ async function migrateData() {
         .single();
 
       if (error) {
-        console.error(`❌ 帖子 "${post.title}" 迁移失败:`, error.message);
+        console.error(`❌ Failed to migrate post "${post.title}":`, error.message);
       } else {
         postIdMap[post.id] = data.id;
       }
     }
-    console.log(`✅ ${dbData.communityPosts.length} 个社区帖子已迁移\n`);
+    console.log(`✅ Migrated ${dbData.communityPosts.length} community posts\n`);
 
-    // 6. 迁移点赞记录
-    console.log('📝 迁移点赞记录...');
+    // 6. Migrate like records
+    console.log('📝 Migrating like records...');
     let likeCount = 0;
     for (const likeId of dbData.user.likes) {
       let targetType, targetId;
@@ -205,16 +205,16 @@ async function migrateData() {
           });
 
         if (error && error.code !== '23505') {
-          console.error(`❌ 点赞记录迁移失败:`, error.message);
+          console.error('❌ Failed to migrate like record:', error.message);
         } else {
           likeCount++;
         }
       }
     }
-    console.log(`✅ ${likeCount} 条点赞记录已迁移\n`);
+    console.log(`✅ Migrated ${likeCount} like records\n`);
 
-    // 7. 迁移收藏记录
-    console.log('📝 迁移收藏记录...');
+    // 7. Migrate bookmark records
+    console.log('📝 Migrating bookmark records...');
     let bookmarkCount = 0;
     for (const oldPostId of dbData.user.bookmarks) {
       const newPostId = postIdMap[oldPostId];
@@ -227,34 +227,34 @@ async function migrateData() {
           });
 
         if (error && error.code !== '23505') {
-          console.error(`❌ 收藏记录迁移失败:`, error.message);
+          console.error('❌ Failed to migrate bookmark record:', error.message);
         } else {
           bookmarkCount++;
         }
       }
     }
-    console.log(`✅ ${bookmarkCount} 条收藏记录已迁移\n`);
+    console.log(`✅ Migrated ${bookmarkCount} bookmark records\n`);
 
-    console.log('🎉 数据迁移完成！');
-    console.log('\n下一步：');
-    console.log('1. 访问 Supabase Dashboard 验证数据');
-    console.log('2. 运行 npm run dev:all 测试应用');
-    console.log('3. 部署到 Vercel: vercel --prod');
+    console.log('🎉 Data migration completed!');
+    console.log('\nNext steps:');
+    console.log('1. Open Supabase Dashboard to verify the data');
+    console.log('2. Run npm run dev:all to test the app');
+    console.log('3. Deploy to Vercel: vercel --prod');
 
   } catch (error) {
-    console.error('❌ 迁移过程中发生错误:', error);
+    console.error('❌ Error occurred during migration:', error);
   }
 }
 
 // =====================================================
-// Seed 数据：为 Guest-first Demo 提供高质量内容
+// Seed data: provide high-quality content for Guest-first Demo
 // =====================================================
 async function seedDemoData() {
   try {
-    console.log('\n🌱 开始插入 Seed 数据...\n');
+    console.log('\n🌱 Starting to insert Seed data...\n');
 
-    // 1. 创建 Seed Profiles
-    console.log('👤 创建 Seed 用户...');
+    // 1. Create Seed profiles
+    console.log('👤 Creating Seed users...');
     const seedProfiles = [
       { user_name: 'Emma Chen', user_handle: '@emma_wisdom', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=emma', is_seed: true, display_name: 'Emma Chen' },
       { user_name: 'Alex Rivera', user_handle: '@alex_creates', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex', is_seed: true, display_name: 'Alex Rivera' },
@@ -268,7 +268,7 @@ async function seedDemoData() {
 
     const seedProfileIds = [];
     for (const profile of seedProfiles) {
-      // 先尝试查询是否已存在
+      // First check if it already exists
       const { data: existing } = await supabase
         .from('profiles')
         .select('id, user_name')
@@ -277,7 +277,7 @@ async function seedDemoData() {
       
       if (existing) {
         seedProfileIds.push({ id: existing.id, name: existing.user_name });
-        console.log(`✅ ${profile.user_name} (已存在)`);
+        console.log(`✅ ${profile.user_name} (already exists)`);
       } else {
         const { data, error } = await supabase
           .from('profiles')
@@ -286,17 +286,17 @@ async function seedDemoData() {
           .single();
         
         if (error) {
-          console.error(`❌ 创建 seed profile ${profile.user_name} 失败:`, error.message);
+          console.error(`❌ Failed to create seed profile ${profile.user_name}:`, error.message);
         } else {
           seedProfileIds.push({ id: data.id, name: data.user_name });
           console.log(`✅ ${profile.user_name}`);
         }
       }
     }
-    console.log(`\n✅ ${seedProfileIds.length} 个 Seed 用户已创建\n`);
+    console.log(`\n✅ Created ${seedProfileIds.length} Seed users\n`);
 
-    // 2. 创建社区标签
-    console.log('🏷️  创建社区标签...');
+    // 2. Create community tags
+    console.log('🏷️  Creating community tags...');
     const communities = [
       { name: 'Mindfulness', icon: '🧘', color: '#8B5CF6', member_count: 4532 },
       { name: 'Relationships', icon: '❤️', color: '#EC4899', member_count: 3876 },
@@ -307,7 +307,7 @@ async function seedDemoData() {
 
     const communityIds = {};
     for (const comm of communities) {
-      // 先尝试查询是否已存在
+      // First check if tag already exists
       const { data: existing } = await supabase
         .from('community_tags')
         .select('id, name')
@@ -316,7 +316,7 @@ async function seedDemoData() {
       
       if (existing) {
         communityIds[comm.name] = existing.id;
-        console.log(`✅ ${comm.name} (已存在)`);
+        console.log(`✅ ${comm.name} (already exists)`);
       } else {
         const { data, error } = await supabase
           .from('community_tags')
@@ -325,17 +325,17 @@ async function seedDemoData() {
           .single();
         
         if (error) {
-          console.error(`❌ 创建社区 ${comm.name} 失败:`, error.message);
+          console.error(`❌ Failed to create community ${comm.name}:`, error.message);
         } else {
           communityIds[comm.name] = data.id;
           console.log(`✅ ${comm.name}`);
         }
       }
     }
-    console.log(`\n✅ ${Object.keys(communityIds).length} 个社区已创建\n`);
+    console.log(`\n✅ Created ${Object.keys(communityIds).length} communities\n`);
 
-    // 3. 创建 Seed Posts（20-50 条）
-    console.log('📮 创建 Seed 帖子...');
+    // 3. Create Seed posts (20–50 posts)
+    console.log('📮 Creating Seed posts...');
     const seedPosts = [
       // Mindfulness
       {
@@ -542,7 +542,7 @@ async function seedDemoData() {
         comments: 92
       },
       
-      // 更多帖子...
+      // More posts...
       {
         title: 'Walking 10K Steps Daily: 6 Month Update',
         author_type: 'seed',
@@ -613,7 +613,7 @@ async function seedDemoData() {
     let postCount = 0;
     for (const post of seedPosts) {
       if (!post.author_id || !post.community_tag_id) {
-        console.log(`⚠️  跳过帖子 "${post.title}" (缺少 author 或 community)`);
+        console.log(`⚠️  Skipping post "${post.title}" (missing author or community)`);
         continue;
       }
       
@@ -622,43 +622,43 @@ async function seedDemoData() {
         .insert({
           ...post,
           content_json: { content: post.content },
-          is_demo: false, // seed 内容不是 demo
-          timestamp: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() // 过去 30 天随机时间
+          is_demo: false, // seed content is not demo
+          timestamp: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() // random time in the past 30 days
         });
       
       if (error) {
-        console.error(`❌ 创建帖子 "${post.title}" 失败:`, error.message);
+        console.error(`❌ Failed to create post "${post.title}":`, error.message);
       } else {
         postCount++;
         console.log(`✅ ${post.title.slice(0, 50)}...`);
       }
     }
-    console.log(`\n✅ ${postCount} 条 Seed 帖子已创建\n`);
+    console.log(`\n✅ Created ${postCount} Seed posts\n`);
 
-    console.log('🎉 Seed 数据插入完成！\n');
-    console.log('📊 数据统计：');
-    console.log(`   - ${seedProfileIds.length} 个 Seed 用户`);
-    console.log(`   - ${Object.keys(communityIds).length} 个社区`);
-    console.log(`   - ${postCount} 条高质量帖子\n`);
+    console.log('🎉 Seed data insert completed!\n');
+    console.log('📊 Data stats:');
+    console.log(`   - ${seedProfileIds.length} Seed users`);
+    console.log(`   - ${Object.keys(communityIds).length} communities`);
+    console.log(`   - ${postCount} high-quality posts\n`);
     
   } catch (error) {
-    console.error('❌ Seed 数据插入失败:', error);
+    console.error('❌ Seed data insert failed:', error);
     throw error;
   }
 }
 
-// 主流程
+// Main entry
 async function main() {
   const args = process.argv.slice(2);
   
   if (args.includes('--seed-only')) {
-    console.log('🌱 只执行 Seed 数据插入（不清空现有数据）\n');
+    console.log('🌱 Only inserting Seed data (without clearing existing data)\n');
     await seedDemoData();
   } else {
     await migrateData();
-    console.log('\n是否要插入 Seed 数据？(y/n)');
-    console.log('提示：运行 node supabase/migrate-data.js --seed-only 可单独插入 seed\n');
-    // 自动插入 seed
+    console.log('\nInsert Seed data as well? (y/n)');
+    console.log('Tip: run "node supabase/migrate-data.js --seed-only" to insert seed data only\n');
+    // Auto-insert seed data
     await seedDemoData();
   }
 }

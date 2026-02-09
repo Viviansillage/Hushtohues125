@@ -1,9 +1,9 @@
 import { getActor, supabase, filterSystemTags } from '../supabase.js';
 
 /**
- * GET /api/history/[id] - 获取单个 archive 详情
- * PATCH /api/history/[id] - 更新 archive
- * DELETE /api/history/[id] - 删除 archive
+ * GET /api/history/[id] - Get single archive detail
+ * PATCH /api/history/[id] - Update archive
+ * DELETE /api/history/[id] - Delete archive
  */
 export default async function handler(req, res) {
   // CORS
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  // 从 URL 中提取 id
+  // Extract id from URL
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathParts = url.pathname.split('/');
   const id = pathParts[pathParts.length - 1];
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   });
 
   try {
-    // ========== GET: 获取详情 ==========
+    // ========== GET: Fetch detail ==========
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('chat_history')
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // 如果是私有的，验证所有权
+      // If private, verify ownership
       if (!data.is_public && (data.owner_type !== actor.type || data.owner_id !== actor.id)) {
         console.error('[history/[id]] GET forbidden:', {
           expected: `${data.owner_type}:${data.owner_id}`,
@@ -98,11 +98,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // ========== PATCH: 更新 ==========
+    // ========== PATCH: Update ==========
     if (req.method === 'PATCH') {
       const body = await parseBody(req);
 
-      // 先查询验证所有权
+      // Query to verify ownership first
       const { data: item } = await supabase
         .from('chat_history')
         .select('owner_type, owner_id')
@@ -123,7 +123,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // 更新
+      // Update
       const updates = {};
       if (body.title !== undefined) updates.title = body.title;
       if (body.isPublic !== undefined) updates.is_public = body.isPublic;
@@ -162,9 +162,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ========== DELETE: 删除 ==========
+    // ========== DELETE: Delete ==========
     if (req.method === 'DELETE') {
-      // 先查询验证所有权
+      // Query to verify ownership first
       const { data: item } = await supabase
         .from('chat_history')
         .select('owner_type, owner_id')

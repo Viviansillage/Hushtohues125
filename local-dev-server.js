@@ -1,11 +1,11 @@
 /**
- * 本地开发服务器 - 模拟 Vercel Serverless Functions
- * 用于在本地测试 API 端点而无需部署到 Vercel
+ * Local dev server - simulates Vercel Serverless Functions
+ * For testing API endpoints locally without deploying to Vercel
  * 
- * 使用方法：
- * 1. 确保 .env 文件包含 SUPABASE_URL, SUPABASE_ANON_KEY, GEMINI_API_KEY
- * 2. 运行: node local-dev-server.js
- * 3. 访问: http://localhost:3001/api/chat?action=message
+ * Usage:
+ * 1. Ensure .env contains SUPABASE_URL, SUPABASE_ANON_KEY, GEMINI_API_KEY
+ * 2. Run: node local-dev-server.js
+ * 3. Visit: http://localhost:3001/api/chat?action=message
  */
 
 import http from 'http';

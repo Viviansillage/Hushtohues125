@@ -1,10 +1,10 @@
 -- ========================================
--- Hush to Hues - 初始数据脚本
+-- Hush to Hues - Initial seed data script
 -- ========================================
--- 用法：在reset-database.sql之后运行
+-- Usage: run after reset-database.sql
 -- ========================================
 
--- 1. 插入默认用户配置
+-- 1. Insert default user profile
 INSERT INTO profiles (user_name, user_handle, avatar, email_notifications, save_history, public_profile)
 VALUES (
   'Alex Morgan',
@@ -15,14 +15,14 @@ VALUES (
   true
 );
 
--- 2. 插入示例聊天会话
+-- 2. Insert example chat sessions
 INSERT INTO chat_sessions (session_id, owner_type, owner_id, title, last_message_at)
 VALUES
   ('session-1', 'guest', 'guest-demo', 'Creative Writing Ideas', '2026-01-24T10:30:00.000Z'),
   ('session-2', 'guest', 'guest-demo', 'Project Planning', '2026-01-23T15:45:00.000Z'),
   ('session-3', 'guest', 'guest-demo', 'Recipe Suggestions', '2026-01-22T09:20:00.000Z');
 
--- 3. 插入示例消息（session-1: Creative Writing Ideas）
+-- 3. Insert example messages (session-1: Creative Writing Ideas)
 INSERT INTO chat_messages (session_id, message_id, sender, text, timestamp)
 VALUES
   ('session-1', 'msg-1-1', 'user', 'Can you help me brainstorm story concepts?', '2026-01-24T10:30:00.000Z'),
@@ -30,7 +30,7 @@ VALUES
   ('session-1', 'msg-1-3', 'user', 'I''m thinking fantasy with a modern twist', '2026-01-24T10:31:00.000Z'),
   ('session-1', 'msg-1-4', 'bot', 'Great choice! Here are some concepts:\n\n1. **Urban Enchanter**: A software developer discovers they can debug reality itself, fixing "glitches" in the fabric of the world.\n\n2. **The Last Bookshop**: In a world where magic is stored in physical books, a struggling bookshop owner is the only one who can access ancient spells.\n\n3. **Dragon Shares**: Dragons exist as corporate entities, and your protagonist just inherited shares in one.\n\nWhich direction interests you most?', '2026-01-24T10:31:30.000Z');
 
--- 4. 插入示例历史记录（添加owner_type和owner_id）
+-- 4. Insert example history (with owner_type and owner_id)
 INSERT INTO chat_history (session_id, owner_type, owner_id, title, message_count, last_message, timestamp, preview_images, is_public, tags)
 VALUES
   (
@@ -80,7 +80,7 @@ VALUES
     ARRAY['food', 'health', 'breakfast']
   );
 
--- 5. 插入社区示例帖子（完整字段匹配reset-database.sql）
+-- 5. Insert example community posts (fields match reset-database.sql)
 INSERT INTO community_posts (
   post_id,
   session_id,
@@ -149,7 +149,7 @@ VALUES
     false
   );
 
--- 6. 插入社区标签
+-- 6. Insert community tags
 INSERT INTO community_tags (name, icon, color, member_count, total_posts)
 VALUES
   ('Creative Writing', '✍️', '#FF6B6B', 1250, 3420),
@@ -158,7 +158,7 @@ VALUES
   ('Career Growth', '📈', '#FFD93D', 1560, 4200),
   ('Tech Tips', '💻', '#6C5CE7', 3200, 8900);
 
--- 完成！
+-- Done!
 SELECT 
   'Database seeded successfully!' as status,
   (SELECT COUNT(*) FROM profiles) as profiles_count,

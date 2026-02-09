@@ -1,7 +1,7 @@
-// Vercel Serverless Function - 完全独立，不依赖外部 server 目录
+// Vercel Serverless Function - standalone, no external server
 import { getProfile, getHistory, getCommunityPosts, getCommunityMeta, getOrCreateDefaultProfile } from './supabase.js';
 
-// 解析 JSON body
+// Parse JSON body
 async function parseBody(req) {
   return new Promise((resolve) => {
     let body = '';
@@ -29,9 +29,9 @@ export default async function handler(req, res) {
   const { url, method } = req;
   
   try {
-    // 健康检查
+    // Health check
     if (url === '/api/health' || url === '/health') {
-      await getOrCreateDefaultProfile(); // 初始化
+      await getOrCreateDefaultProfile(); // Init
       return res.status(200).json({ 
         status: 'ok',
         env: {
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 用户配置
+    // User config
     if (url === '/api/profile' || url === '/profile') {
       if (method === 'GET') {
         const profile = await getProfile();
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 聊天历史
+    // Chat history
     if (url === '/api/history' || url === '/history') {
       if (method === 'GET') {
         const history = await getHistory();
@@ -59,24 +59,24 @@ export default async function handler(req, res) {
       }
     }
 
-    // 社区帖子
+    // Community posts
     if ((url === '/api/community/posts' || url === '/community/posts') && method === 'GET') {
       const posts = await getCommunityPosts();
       return res.status(200).json(posts);
     }
 
-    // 社区元数据
+    // Community meta
     if ((url === '/api/community' || url === '/community') && method === 'GET') {
       const meta = await getCommunityMeta();
       return res.status(200).json(meta);
     }
 
-    // 聊天消息（临时存储）
+    // Chat messages (temp storage)
     if ((url === '/api/chat/messages' || url === '/chat/messages') && method === 'GET') {
       return res.status(200).json([]);
     }
 
-    // 发送消息
+    // Send message
     if ((url === '/api/chat/message' || url === '/chat/message') && method === 'POST') {
       const body = await parseBody(req);
       const { text } = body;
